@@ -13,30 +13,30 @@ not yet ported.
 The whole adapter is one OpenCode **permission `evaluate` hook** plus a pure
 core:
 
-| File | Role |
-| --- | --- |
+| File       | Role                                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `gates.ts` | Agent-agnostic core: run a gate script, translate its result into a decision. No OpenCode import, so it is unit-testable. |
-| `index.ts` | OpenCode binding: `ctx.permission.hook("evaluate")`. Loads automatically from `.opencode/plugins/`. |
-| `prove.ts` | Runs the core against the **real** projected scripts and asserts block/ask/allow. |
+| `index.ts` | OpenCode binding: `ctx.permission.hook("evaluate")`. Loads automatically from `.opencode/plugins/`.                       |
+| `prove.ts` | Runs the core against the **real** projected scripts and asserts block/ask/allow.                                         |
 
 OpenCode evaluates a permission decision for every tool call and hands the hook
 the tool's **action** and **resources**. We map those to the gate scripts the
 Claude Code wiring would have run:
 
-| OpenCode action | Resources | Gate script |
-| --- | --- | --- |
-| `shell` | scanner-produced command string(s) | `validate-bash.sh` |
-| `edit` (also `write`, `patch`) | target path(s) | `protect-files.sh` |
+| OpenCode action                | Resources                          | Gate script        |
+| ------------------------------ | ---------------------------------- | ------------------ |
+| `shell`                        | scanner-produced command string(s) | `validate-bash.sh` |
+| `edit` (also `write`, `patch`) | target path(s)                     | `protect-files.sh` |
 
 The hook then translates the gate's result back into OpenCode's vocabulary:
 
-| Gate script result | Decision | Adapter does |
-| --- | --- | --- |
-| exit 2, `BLOCKED: …` (stderr) | **block** | `event.effect = "deny"`, `event.message = "gates: …"` (the reason is shown to the model) |
-| exit 0, ask JSON on stdout | **ask** | `event.effect = "ask"`, `event.message = "gates: …"` |
-| exit 0, no output | **allow** | leave the decision untouched |
-| any other exit (e.g. the bash 3.2 bug below) | **ask** | never a silent allow |
-| script not projected | **allow** | inert — there is no policy to enforce |
+| Gate script result                           | Decision  | Adapter does                                                                             |
+| -------------------------------------------- | --------- | ---------------------------------------------------------------------------------------- |
+| exit 2, `BLOCKED: …` (stderr)                | **block** | `event.effect = "deny"`, `event.message = "gates: …"` (the reason is shown to the model) |
+| exit 0, ask JSON on stdout                   | **ask**   | `event.effect = "ask"`, `event.message = "gates: …"`                                     |
+| exit 0, no output                            | **allow** | leave the decision untouched                                                             |
+| any other exit (e.g. the bash 3.2 bug below) | **ask**   | never a silent allow                                                                     |
+| script not projected                         | **allow** | inert — there is no policy to enforce                                                    |
 
 Why `permission.evaluate` and not `ctx.tool.hook("execute.before")`? The tool
 hook is documented as "inspect or **replace** input" with no reject API; the
@@ -48,7 +48,7 @@ onto gates' exit codes.
 Adding the plugin needed **no restart** — OpenCode hot-loaded it. The adapter's
 own log (`.specify/gates/opencode-adapter.log`) records:
 
-```
+```text
 adapter loaded (bash=bash, hooks=…/.claude/hooks/gates)
 DENY  edit  [".specify/gates/policy.json"]               :: Gates policy (a human edits it; the commit needs a Protected-Change trailer)
 ASK   shell ["GATES_SKIP=1 echo gates-poc-live-ask-ok"]  :: gates: this command sets GATES_SKIP, which weakens what the gates enforce; confirm it
@@ -76,10 +76,10 @@ it is right. `validate-bash.sh` wraps `grep`/`sed`/`tr`/`awk` in shell functions
 (lines 70–73) and tests them as `if grep …; then`. In **bash 3.2** — which is
 `/bin/bash` on macOS, and gates' hook shebang is `#!/bin/bash` — `set -e` is
 **not** suppressed inside a function body called as an `if` condition (fixed in
-later bash). So the hook exits 1 the moment a rule does not match, *before* it
+later bash). So the hook exits 1 the moment a rule does not match, _before_ it
 prints any block:
 
-```
+```sh
 $ printf '%s' '{"tool_input":{"command":"rm -rf /"}}' | CLAUDE_PROJECT_DIR=… /bin/bash .claude/hooks/gates/validate-bash.sh ; echo $?
 1                          # silent: Claude Code sees a non-blocking error and RUNS the command
 $ … | CLAUDE_PROJECT_DIR=… /opt/homebrew/bin/bash .claude/hooks/gates/validate-bash.sh ; echo $?
@@ -119,7 +119,7 @@ interpreter. If only bash 3.2 is available, the broken hook surfaces as an
 2. **`ask` routing.** Handled: gates' ask-JSON becomes OpenCode's permission
    `ask` effect rather than being passed through.
 3. **Fidelity of the `shell` resource.** OpenCode hands the permission hook the
-   *scanner-produced* command string (compound commands may split into several
+   _scanner-produced_ command string (compound commands may split into several
    resources). That is usually equal to the raw command, but if exact raw text
    matters, capture it in `ctx.tool.hook("execute.before")` and correlate.
 4. **`post-edit` auto-format** (`post-edit.sh` → `format-changed.sh`) maps to
