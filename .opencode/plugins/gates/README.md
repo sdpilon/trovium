@@ -8,6 +8,15 @@ Status: **proof of concept**. `protect-files` (edits) and `validate-bash`
 (shell) are wired and verified live. The remaining hooks are mapped below but
 not yet ported.
 
+> **A staged upstream contribution, not trovium's own tooling.** The adapter
+> bridges the spec-gates extension onto OpenCode and belongs upstream as an
+> OpenCode projection target (a sibling to the existing `claude` target — see
+> _Layout_). It lives in this repo only because trovium is its first consumer;
+> the intended end state is a thin, generated projection. It depends on
+> spec-gates internals (the hook scripts, the `.specify/gates/lib` runtime, the
+> exit-code/ask-JSON contract), so drift with spec-gates is the expected failure
+> mode, not an edge case.
+
 ## How it works
 
 The whole adapter is one OpenCode **permission `evaluate` hook** plus a pure
