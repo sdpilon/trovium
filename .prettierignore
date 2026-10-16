@@ -1,0 +1,6 @@
+# Vendored content: spec-kit's generated command files are not this project's
+# to reformat (a `specify` sync would rewrite them). The policy already scopes
+# .specify/** and .claude/** out of the linters; this does the same for the
+# generated OpenCode commands. Hand-written files under .opencode/plugins/ stay
+# in scope.
+.opencode/commands/

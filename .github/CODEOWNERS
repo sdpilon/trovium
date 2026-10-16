@@ -1,0 +1,16 @@
+# CODEOWNERS — spec-gates governance surface.
+#
+# Last matching pattern wins, so the catch-all comes first and the
+# enforcement-relevant paths are named after it. The paths below define how
+# the project is governed (policy, hooks, CI, projections and specs); a
+# change that weakens a gate should not merge on the same authority as an
+# ordinary change.
+
+*                    @sdpilon
+
+# Enforcement and its configuration.
+/.github/            @sdpilon
+/.specify/gates/     @sdpilon
+/.specify/memory/    @sdpilon
+/.opencode/          @sdpilon
+/.claude/            @sdpilon

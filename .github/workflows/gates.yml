@@ -1,0 +1,91 @@
+# spec-gates CI boundary — projected by /speckit.gates.ci github
+# Runs the IDENTICAL entrypoint used by the Claude Code Stop hook and the
+# git pre-commit hook. Parity property: local green == CI green.
+#
+# Hardened by default: read-only token, no persisted git credentials, one
+# run per ref, a job timeout. Actions are referenced by major tag; pin them
+# to commit SHAs if your organization requires it (Dependabot keeps pinned
+# SHAs current). When merging into an existing workflow, keep its stricter
+# settings and add only what is missing.
+name: Quality Gates
+on:
+  pull_request:
+    # `edited`: a title/description change re-runs the PR check.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the PR check walks base..head for protected changes.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install gate tooling
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq
+          # Install shellcheck at the version pinned in .tool-versions, from
+          # the upstream release for this runner's architecture, refused
+          # unless it matches the checksums in
+          # .specify/gates/shellcheck.sha256 (apt ships an older release
+          # whose findings differ; the parity gate fails on the drift).
+          # Without a pin, the distro package is installed instead:
+          # unpinned, so CI and local runs may disagree.
+          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+            bash .specify/gates/install-shellcheck.sh
+          else
+            sudo apt-get install -y -q shellcheck
+          fi
+          # Lockfile-pinned linters keep CI on the versions local runs use
+          # (the parity gate compares them); fall back to the latest only
+          # when the repo pins nothing.
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install -g prettier markdownlint-cli2
+          fi
+      - name: Run quality gates
+        run: bash .specify/gates/verify.sh --boundary ci
+      # A red step here means a BROKEN GATE, not a dirty tree: a canary
+      # (known violation) was accepted instead of blocked, or a linter the
+      # policy enables is not installed (the gate would skip it).
+      - name: Prove the gate still blocks (canaries)
+        run: bash .specify/gates/canary.sh
+      # PR title/description against the commit-message rules, and
+      # Protected-Change declarations across the PR's commits, and the
+      # pre-commit secret and forbidden-file scan over each of them (commits
+      # made by cherry-pick, rebase, am or revert never ran it). Passed via
+      # env, never interpolated into the script (injection-safe).
+      # The check runs the BASE branch's pr-check.sh and lib against the PR
+      # checkout (GATES_RUNTIME_DIR), so a PR cannot replace the code that
+      # judges it. A base without pr-check.sh (the PR adopting spec-gates)
+      # runs the PR's own copy. This workflow file still comes from the PR:
+      # protect it and .specify/gates/** with branch protection + CODEOWNERS.
+      - name: Check the pull request (text, protected changes, secrets)
+        if: github.event_name == 'pull_request'
+        env:
+          GATES_PR_TITLE: ${{ github.event.pull_request.title }}
+          GATES_PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          base="origin/$GITHUB_BASE_REF"
+          if git cat-file -e "$base:.specify/gates/pr-check.sh" 2>/dev/null; then
+            rt="$(mktemp -d)"
+            git archive "$base" .specify/gates | tar -x -C "$rt"
+            echo "pr-check: running the base revision's pr-check.sh ($base)"
+            GATES_RUNTIME_DIR="$rt/.specify/gates" bash "$rt/.specify/gates/pr-check.sh"
+          else
+            echo "pr-check: the base ($base) has no pr-check.sh (adoption PR); running the pull request's own copy"
+            bash .specify/gates/pr-check.sh
+          fi

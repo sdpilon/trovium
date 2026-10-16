@@ -1,0 +1,13 @@
+{
+  // Project config for markdownlint-cli2, resolved from the repository root.
+  // MD013 (line length) is off because prettier owns prose wrapping
+  // (proseWrap: preserve) and reflows tables; MD041 (first line must be a
+  // heading) is off because some in-repo markdown opens with frontmatter or a
+  // section. The rest of the ruleset stays on.
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD041": false
+  },
+  "ignores": [".opencode/commands/**"]
+}
