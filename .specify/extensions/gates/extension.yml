@@ -1,0 +1,90 @@
+schema_version: "1.0"
+
+extension:
+  id: gates
+  name: "Quality Gates (Enforcement Layer)"
+  version: "0.4.1"
+  description: >-
+    Deterministic quality enforcement for Spec Kit projects at three
+    boundaries: the agent boundary (Claude Code PreToolUse/PostToolUse/Stop
+    hooks), the git boundary (pre-commit / pre-merge-commit / commit-msg),
+    and the CI boundary (projected GitHub Actions / GitLab CI / Jenkins
+    pipelines). One policy file, one verify entrypoint, identical results
+    at every boundary.
+  author: schwichtgit
+  repository: https://github.com/schwichtgit/spec-gates
+  license: MIT
+
+requires:
+  # The extension system ships in Spec Kit's 0.12.x line (verified against
+  # v0.12.4). The API still carries an RFC and an "experimental" label, so
+  # treat it as evolving, not a frozen contract.
+  speckit_version: ">=0.12.0"
+  # Tools the runtime needs (doctor checks each one). python3 needs the
+  # json module: the PR hook parses commands with it and refuses every PR
+  # command without it. project.sh refuses to run without cmp. Not listed:
+  # sha256sum or shasum (either one), which project.sh and the contract
+  # gate need; doctor fails when neither is installed.
+  tools:
+    - name: jq
+      required: true
+    - name: git
+      required: true
+    - name: python3
+      required: true
+    - name: cmp
+      required: true
+
+provides:
+  commands:
+    - name: speckit.gates.init
+      file: commands/speckit.gates.init.md
+      description: "Infer a quality policy from the repo, project the enforcement runtime, wire agent + git hooks, and run a self-test"
+    - name: speckit.gates.verify
+      file: commands/speckit.gates.verify.md
+      description: "Run the full gate suite on demand (same checks as the Stop hook, pre-commit, and CI)"
+    - name: speckit.gates.doctor
+      file: commands/speckit.gates.doctor.md
+      description: "Check enforcement health: tools, hooks wired and proven, runtime current, upgrade safety, install hygiene, and the spec, contract and constitution gates"
+    - name: speckit.gates.ci
+      file: commands/speckit.gates.ci.md
+      description: "Project CI enforcement for a platform: github | gitlab | jenkins (optionally --protect the default branch)"
+    - name: speckit.gates.upgrade
+      file: commands/speckit.gates.upgrade.md
+      description: "Upgrade the extension and re-project the enforcement runtime through one reviewable step (never touches policy.json)"
+    - name: speckit.gates.sync
+      file: commands/speckit.gates.sync.md
+      description: "Sync the policy baseline contract: pin, snapshot, and materialize the effective policy (--update moves the pin as a reviewable change)"
+    - name: speckit.gates.propose
+      file: commands/speckit.gates.propose.md
+      description: "Propose this repo's policy deviations upstream as a change request against the baseline"
+    - name: speckit.gates.constitution
+      file: commands/speckit.gates.constitution.md
+      description: "Guided constitution session: interview to a profile, pick corpus principles, and produce an enforcement-annotated, ratifiable draft"
+
+# Native integration with the core Spec Kit loop: after /speckit.implement
+# finishes, offer to run the gate suite so a red gate is caught before the
+# user moves on to commit/PR.
+hooks:
+  after_implement:
+    command: speckit.gates.verify
+    optional: true
+    prompt: "Run quality gates on the implemented changes?"
+    description: "Run the gate suite after implementation"
+  before_constitution:
+    command: speckit.gates.constitution
+    optional: true
+    prompt: "Run the guided constitution session first (interview, corpus principles, enforcement annotations)?"
+    description: "Offer the guided, enforcement-aware session before the core constitution command runs"
+
+tags:
+  - "quality"
+  - "enforcement"
+  - "hooks"
+  - "ci"
+  - "governance"
+
+config:
+  defaults:
+    policy_path: ".specify/gates/policy.json"
+    runtime_dir: ".specify/gates"

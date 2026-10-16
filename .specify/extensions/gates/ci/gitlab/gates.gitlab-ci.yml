@@ -1,0 +1,69 @@
+# spec-gates CI boundary — include or merge into .gitlab-ci.yml
+# (projected by /speckit.gates.ci gitlab)
+gates:
+  stage: test
+  image: node:26-slim
+  timeout: 20m
+  interruptible: true
+  variables:
+    # Full history: the MR check walks base..head for protected changes.
+    GIT_DEPTH: "0"
+  before_script:
+    # python3: the PR checks need it. curl: pr-check fetches a truncated MR
+    # description from the API (python3 is the fallback when curl is absent)
+    # and the shellcheck installer downloads with it. xz-utils: the
+    # shellcheck release is a .tar.xz.
+    - apt-get update -q && apt-get install -y -q jq git python3 curl xz-utils
+    # Install shellcheck at the version pinned in .tool-versions, from the
+    # upstream release for this runner's architecture, refused unless it
+    # matches the checksums in .specify/gates/shellcheck.sha256 (Debian
+    # ships an older release whose findings differ; the parity gate fails
+    # on the drift). Without a pin, the distro package is installed
+    # instead: unpinned, so CI and local runs may disagree.
+    - |
+      if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+        bash .specify/gates/install-shellcheck.sh
+      else
+        apt-get install -y -q shellcheck
+      fi
+    # Lockfile-pinned linters keep CI on the versions local runs use (the
+    # parity gate compares them); latest only when the repo pins nothing.
+    - if [ -f package-lock.json ]; then npm ci; else npm install -g prettier markdownlint-cli2; fi
+  script:
+    - bash .specify/gates/verify.sh --boundary ci
+    # A failure here means a BROKEN GATE (a canary violation was accepted,
+    # or a linter the policy enables is not installed), not a dirty tree.
+    - bash .specify/gates/canary.sh
+    # MR title/description against the commit-message rules, and
+    # Protected-Change declarations across the MR's commits, and the
+    # pre-commit secret and forbidden-file scan over each of them. Skips itself
+    # outside merge-request pipelines. Note: editing an MR title or
+    # description does not start a pipeline; re-run it after such edits.
+    # GitLab exposes the description from 16.7 and truncates long ones; then
+    # pr-check fetches the full text from the API with GATES_GITLAB_TOKEN (a
+    # masked CI/CD variable holding a read_api token) or CI_JOB_TOKEN. A
+    # truncated description it cannot fetch fails the job; before 16.7
+    # without a token only the title is checked (pr-check prints a notice).
+    # In an MR pipeline the check runs the BASE revision's pr-check.sh and
+    # lib against the MR checkout (GATES_RUNTIME_DIR), so an MR cannot
+    # replace the code that judges it. A base without pr-check.sh (the MR
+    # adopting spec-gates) runs the MR's own copy. This file still comes
+    # from the MR: protect it and .specify/gates/** with protected branches
+    # + CODEOWNERS (approval required).
+    - |
+      set -e
+      base="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}"
+      if [ -z "$base" ]; then
+        bash .specify/gates/pr-check.sh
+      elif git cat-file -e "$base:.specify/gates/pr-check.sh" 2>/dev/null; then
+        rt="$(mktemp -d)"
+        git archive "$base" .specify/gates | tar -x -C "$rt"
+        echo "pr-check: running the base revision's pr-check.sh ($base)"
+        GATES_RUNTIME_DIR="$rt/.specify/gates" bash "$rt/.specify/gates/pr-check.sh"
+      else
+        echo "pr-check: the base ($base) has no pr-check.sh (adoption MR); running the merge request's own copy"
+        bash .specify/gates/pr-check.sh
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'

@@ -1,0 +1,14 @@
+# spec-gates OpenCode adapter runtime log (regenerated on load)
+.specify/gates/opencode-adapter.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
