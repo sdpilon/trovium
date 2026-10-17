@@ -29,8 +29,9 @@ jobs:
           # Full history: the PR check walks base..head for protected changes.
           fetch-depth: 0
           persist-credentials: false
+      # No floating major tag exists for this action; use the full tag.
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.0
       # --frozen: install exactly the committed uv.lock, never re-resolve; the
       # lockfile is the parity anchor between local runs and this runner.
       - name: Sync the Python environment
