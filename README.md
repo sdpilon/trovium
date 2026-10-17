@@ -39,12 +39,13 @@ Requires [`uv`](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync            # create the environment and install dev dependencies
-scripts/check.sh   # ruff lint + format check + mypy + pytest
+scripts/check.sh   # the full quality gate (see below)
 ```
 
-`scripts/check.sh` is the single canonical check — the same command the
-quality gate runs, so a green local run and a green pipeline are the same
-signal. The steps directly, if you prefer:
+`scripts/check.sh` is the single canonical check — everything the quality
+gate runs: ruff (lint + format), mypy, pytest, and the markdown / file-format /
+shell linters. The same command runs locally and at every gate boundary. The
+Python steps directly, if you prefer:
 
 ```sh
 uv run ruff check .
