@@ -229,7 +229,7 @@ state.
 
 ### XXVI. Typed Python through uv
 
-<!-- gates:enforce surface=prose -->
+<!-- gates:enforce surface=ci ref=gates -->
 
 trovium is implemented in Python, with static type checking on every public
 surface. Formatting, linting, and tests run through `uv` (ruff and pytest) as
@@ -253,4 +253,4 @@ and is approved by the project's maintainers. Every review verifies compliance
 with the principles above; the enforcement annotations bind each principle to
 the boundary that proves it.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-16
+**Version**: 1.1.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-17
