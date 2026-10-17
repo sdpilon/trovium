@@ -50,7 +50,8 @@
       "severity": "error"
     },
     "verify-quality": {
-      "orchestrator": "none",
+      "orchestrator": "custom",
+      "custom_command": "bash scripts/check.sh",
       "severity": "error"
     }
   },
