@@ -19,7 +19,19 @@ client. Implementation is Python ≥3.13, typed, exercised through `uv`.
 
 **Language/Version**: Python ≥3.13 with static typing (mypy strict on public surfaces), managed by `uv`
 
-**Primary Dependencies**: `httpx` (qBittorrent WebUI API v2 client in the adapter); `pytest` (tests). Special-purpose discloser: no title-guessing libraries — classification is a minimal hand-rolled matcher (see research.md)
+**Primary Dependencies**:
+
+- **Runtime (exactly one external package)**: `httpx` — qBittorrent WebUI API v2
+  client confined to `adapters/qbittorrent.py`; also supplies `MockTransport`
+  for contract tests.
+- **Stdlib only elsewhere** (no CLI framework, HTTP, or file libraries):
+  `argparse` (CLI), `json` (record), `pathlib`/`os`/`shutil` (enumerate, move,
+  copy, hardlink, `st_dev` cross-volume checks), `hashlib` (BLAKE2b sameness),
+  `sys` (stderr diagnostics). No `typer`/`click`, no `ffprobe`/`pymediainfo`/
+  `guessit`, no `tenacity`/retry, no `asyncio`.
+- **Dev tooling (declared in `[dependency-groups].dev`)**: `pytest`, `mypy`,
+  `ruff`. Test HTTP fixtures use `httpx.MockTransport` (no extra test HTTP
+  package).
 
 **Storage**: N/A — no database, no ledger, no hidden state (constitution XXV). The library plus whichever source a run declared (download client or source directory) are the only state; configuration arrives per run via CLI options and environment
 
@@ -31,7 +43,7 @@ client. Implementation is Python ≥3.13, typed, exercised through `uv`.
 
 **Performance Goals**: A run over dozens of candidates completes in under a minute (SC-001); placement is local filesystem work, no network except the client adapter in client mode
 
-**Constraints**: Offline-capable after `uv sync`; must run read-then-commit to keep FR-010 (client marked handled only after placement fully succeeds); secrets only via environment (constitution I); inspect-only mode makes zero mutations (FR-006)
+**Constraints**: Offline-capable after `uv sync`; exactly one runtime dependency (`httpx`) — adding any other runtime package requires a spec/plan amendment; must run read-then-commit to keep FR-010 (client marked handled only after placement fully succeeds); secrets only via environment (constitution I); inspect-only mode makes zero mutations (FR-006)
 
 **Scale/Scope**: One CLI step + one adapter module; dozens-to-hundreds of candidates per run; file counts per candidate unbounded (nested release trees)
 

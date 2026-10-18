@@ -33,7 +33,7 @@
 **Purpose**: Project readiness for the new step
 
 - [ ] T001 Run `uv sync` and `scripts/check.sh` to confirm the baseline is green before any change (constitution XIII, XXVI)
-- [ ] T002 [P] Register the console script entry point `trovium-ingest = "trovium.cli:main"` in `pyproject.toml` under `[project.scripts]`
+- [ ] T002 [P] Register the console script entry point `trovium-ingest = "trovium.cli:main"` in `pyproject.toml` under `[project.scripts]`, and add `httpx` to `[project].dependencies` (the only runtime dependency — no CLI/file/parse/log libraries, per research.md D8); run `uv lock`/`uv sync` and confirm no other runtime package entered the lock
 - [ ] T003 [P] Create the package layout from plan.md: `src/trovium/adapters/__init__.py`, empty modules `src/trovium/sources.py`, `src/trovium/classify.py`, `src/trovium/library.py`, `src/trovium/placement.py`, `src/trovium/record.py`, `src/trovium/cli.py`, and test dirs `tests/unit/`, `tests/contract/`, `tests/integration/`
 
 **Checkpoint**: environment and `trovium-ingest` entry point exist
@@ -144,6 +144,7 @@
 - [ ] T020 [P] Update `README.md` development section: document the `trovium-ingest` command, its options table (extract from `specs/001-ingest-vertical-slice/contracts/cli.md`), and the disk-source/client-mode examples
 - [ ] T021 Execute `specs/001-ingest-vertical-slice/quickstart.md` scenarios 1–5 as the executable acceptance checks for SC-001–SC-005 and record results in the session; fix anything red before continuing
 - [ ] T022 Run the full canonical gate `scripts/check.sh` and confirm green across ruff, mypy, pytest, and the markdown/file linters (constitution XXII, XXVI), including a timing observation for SC-001: a disk-source run over a fixture of 50 candidates (≈1000 files) must complete in under a minute on the run machine; record the observed duration next to the other scenario outcomes
+- [ ] T023 [P] Add `tests/unit/test_dependency_budget.py` asserting `pyproject.toml`'s `[project].dependencies` equals exactly `["httpx"]` (research.md D8), so an accidental runtime dependency fails CI
 
 ---
 
