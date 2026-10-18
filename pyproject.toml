@@ -20,7 +20,10 @@ classifiers = [
   "Topic :: Multimedia :: Video",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = ["httpx>=0.27"]
+
+[project.scripts]
+trovium-ingest = "trovium.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/sdpilon/trovium"

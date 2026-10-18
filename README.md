@@ -33,6 +33,45 @@ its own.
 The full set of project principles lives in the
 [constitution](.specify/memory/constitution.md).
 
+## Usage
+
+### `trovium-ingest`
+
+The import/ingest step. It takes candidates from either a download client
+(qBittorrent, through the single adapter) or a directory of media already on
+disk, classifies each as a movie / TV / unresolvable using its own names only,
+places resolvable items into the library (folder structure derived; original
+file names preserved), and prints a machine-readable JSON run record.
+
+```sh
+# disk source — no download client involved
+uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media
+
+# inspect what would happen, changing nothing
+uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media --dry-run
+
+# qBittorrent source (credentials from the environment only)
+export TROVIUM_CLIENT_URL=http://127.0.0.1:8080
+export TROVIUM_CLIENT_USERNAME=admin
+export TROVIUM_CLIENT_PASSWORD=...
+uv run trovium-ingest --library-root ~/Media
+```
+
+| Option                              | Default              | Notes                                                                                  |
+| ----------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url` |
+| `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                             |
+| `--library-root PATH`               | required             | library destination root                                                               |
+| `--category {movie,tv,all}`         | `all`                | declared run scope                                                                     |
+| `--mode {move,copy,hardlink}`       | `move`               | placement semantics                                                                    |
+| `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                  |
+| `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                        |
+| `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                              |
+| `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                   |
+
+Full contracts live in
+[`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/).
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
