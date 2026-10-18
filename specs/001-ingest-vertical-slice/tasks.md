@@ -20,7 +20,7 @@
 
 ### Inline notes for required constraints (quoted from data-model.md / contracts/)
 
-- Disposition values are exactly: `ingested`, `already_handled`, `not_yet_complete`, `unresolvable`, `rejected_out_of_scope`, `error_with_reason` — typed enum in `record.py`.
+- Disposition values are exactly: `ingested`, `already_handled`, `not_yet_complete`, `unresolvable`, `rejected_out_of_scope`, `error` (reason required when `error`) — typed enum in `record.py`.
 - Run record field names and enums are pinned by `contracts/record-schema.md`; CLI options/exit codes by `contracts/cli.md`.
 - FR-003 constraint quoted: "File names of the placed media MUST be preserved exactly as ingested … destination _folder_ names … are derived by this step".
 - FR-010 constraint quoted: "MUST NOT mark a download as handled in the client unless its library placement for that item has fully succeeded".
@@ -46,10 +46,14 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Implement typed record models in `src/trovium/record.py`: `Disposition` enum with exactly the six values quoted above, `ItemRecord` (name, disposition, reason nullable, kind nullable, title nullable, destination nullable, actions list), `RunSummary` (source enum, dry_run flag, declared {library_root, category, mode, post_ingest, on_fail}, items list, counts derived and MUST equal items per contracts/record-schema.md), plus `emit(summary, style)` producing compact/pretty JSON to stdout — no credential values may ever appear (constitution I, FR-007, FR-012)
+- [ ] T004 [P] Implement typed record models in `src/trovium/record.py`: `Disposition` enum with exactly the values `ingested`, `already_handled`, `not_yet_complete`, `unresolvable`, `rejected_out_of_scope`, `error` (`reason` required whenever `error` is used — data-model.md/r record-schema.md), `ItemRecord` (name, disposition, reason nullable, kind nullable, title nullable, destination nullable, actions list), `RunSummary` (source enum, dry_run flag, declared {library_root, category, mode, post_ingest, on_fail}, items list, counts derived and MUST equal items per contracts/record-schema.md), plus `emit(summary, style)` producing compact/pretty JSON to stdout — no credential values may ever appear (constitution I, FR-007, FR-012)
 - [ ] T005 [P] Implement the classification matcher in `src/trovium/classify.py`: from a candidate name and its nested file names classify movie (title + year/quality grammar), tv (series title + `S01E02`-style or season-pack markers), or `unresolvable`; ambiguous input MUST resolve to `unresolvable`, never guessed (FR-002, data-model.md Classification rules)
-- [ ] T006 Implement destination resolution and already-handled detection in `src/trovium/library.py`: derive the library destination from `--library-root` plus the layout convention (movies root / tv root with show and season subfolders), quoting FR-003: "destination _folder_ names … are derived by this step" while file names are preserved; expose `resolve_destination(classification, library_root)` and `existing_item_matches(destination, candidate_files)` used for the convention-based `already_handled` rule (FR-004 — matches on identity, no ledger)
-- [ ] T007 Implement placement operations in `src/trovium/placement.py`: `move` (rename on same filesystem; copy+delete fallback across volumes), `copy` (`shutil.copy2`, originals remain), `hardlink` (`os.link`, falling back to copy across volumes per FR-003/data-model.md rows 1–8); sameness detection by size + BLAKE2b content hash (never overwrite blindly — Edge Cases); per-item result becomes a Disposition with named reason on failure
+- [ ] T006 Implement destination resolution and already-handled detection in `src/trovium/library.py`: derive the library destination from `--library-root` plus the layout convention (movies root / tv root with show and season subfolders), quoting FR-003: "destination _folder_ names … are derived by this step" while file names are preserved; expose `resolve_destination(classification, library_root)` and `existing_item_matches(destination, candidate_files)` used for the
+      convention-based `already_handled` rule (FR-004 — matches on identity, no
+      ledger): identity by (kind, title, season, file-name set) first; within
+      equal identity, size-equal then BLAKE2b content-hash equal, with the hash
+      computed only when sizes are equal (data-model.md hash-scope section)
+- [ ] T007 Implement placement operations in `src/trovium/placement.py`: `move` (rename on same filesystem; copy+delete fallback across volumes), `copy` (`shutil.copy2`, originals remain), `hardlink` (`os.link`, falling back to copy across volumes per FR-003; outcomes per data-model.md Behavior matrix rows 1–8); sameness detection follows the pinned conflict-outcome policy — no overwrite, no silent replace (never overrides the matrix); per-item result becomes a Disposition with named reason on failure; a destination on an unwritable/unavailable volume yields disposition `error` with the named IOError cause, consumed by `--on-fail {stop|continue}` (matrix row-4 sibling)
 - [ ] T008 Implement the CLI in `src/trovium/cli.py`: exactly the option set, defaults, and env variables of `contracts/cli.md` (`--client-url` default from `TROVIUM_CLIENT_URL`, credentials from `TROVIUM_CLIENT_USERNAME`/`TROVIUM_CLIENT_PASSWORD` only); refuse misuse before any work: `--source` + `--client-url`, `--source` + `--post-ingest`, missing source with URL unset (exit 2 with a message naming the conflicting option); exit 0 run completed / 2 misuse / 3 client unreachable-or-auth-invalid (FR-008)
 
 **Checkpoint**: record/classification/destination/placement/cli cores compile; contract tests can target them; user stories now add sources and wiring
@@ -66,13 +70,13 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T009 [P] [US1] Contract test in tiny tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty), exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
+- [ ] T009 [P] [US1] Contract test in tiny tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty) including a non-directory or unreadable `--library-root`, exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
 - [ ] T010 [P] [US1] Integration test in tests/integration/test_disk_ingest.py covering Story 1 acceptance ids 1–3: media placed with original filenames, non-media child reported `rejected_out_of_scope` with reason, unresolvable child reported `unresolvable`, re-run is a no-op reporting `already_handled` (SC-002), counts reconcile, and no credentials in output (constitution I)
 
 ### Implementation for User Story 1
 
 - [ ] T011 [US1] Implement disk-source candidate enumeration in `src/trovium/sources.py`: each direct child entry of `--source` (file or directory) is exactly one candidate; a candidate's contents may include arbitrarily nested media files that travel together as one item (FR-013); candidates get `completion_state: complete`, `client_state: none`
-- [ ] T012 [US1] Wire the disk-mode run flow in `src/trovium/cli.py`: sources → classify → library → placement → record, emitting `source: "disk"`, category filtering deferred to US3 (accept `all`), and item dispositions flowing through `--on-fail {stop|continue}` semantics (default `continue` runs on after a named per-item error)
+- [ ] T012 [US1] Wire the disk-mode run flow in `src/trovium/cli.py`: sources → classify → library → placement → record, emitting `source: "disk"`, category filtering deferred to US3 (accept `all`), and item dispositions flowing through `--on-fail {stop|continue}` semantics (default `continue` runs on after a named per-item error); note that disk-sourced candidates carry `client_state: none` and `completion_state: complete` so the Candidate shape stays uniform across sources even though those fields are client-relevant only
 
 **Checkpoint**: `uv run trovium-ingest --source … --library-root …` performs the full disk journey; `scripts/check.sh` green
 
@@ -86,11 +90,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Integration test in tests/integration/test_client_ingest.py with a fixture HTTP transport: completed seeded torrent → `ingested` (and FR-010 quoted constraint invoked: handled-marking happens only after placement fully succeeded), incomplete → `not_yet_complete` non-error, unreachable endpoint → exit 3 named error with nothing placed (FR-008), invalid credentials → exit 3, credentials invisible in record/stderr
+- [ ] T013 [P] [US2] Integration test in tests/integration/test_client_ingest.py with a fixture HTTP transport: completed seeded torrent → `ingested` (and FR-010 quoted constraint invoked: handled-marking happens only after placement fully succeeded), incomplete → `not_yet_complete` non-error, unreachable endpoint → exit 3 named error with nothing placed (FR-008), invalid credentials → exit 3, credentials invisible in record/stderr; malformed/unparseable client responses (missing name, completion state, or save path) → exit 3 with named cause, no items ingested, no success in the record — fail closed per constitution VI (tests/contract coverage via a stubbed transport returning broken payloads)
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Implement the single qBittorrent adapter in `src/trovium/adapters/qbittorrent.py` (constitutions XVIII/XXVII: the only client-I/O code): login (`/api/v2/auth/login`, session cookie), list candidates (`torrents/info`), and policy operations `torrents/setLocation`, `torrents/pause`, `torrents/delete` for `--post-ingest {keep|pause|delete}`; expose a narrow interface (candidates-in, disposition-out) — ingest code elsewhere must not know qBittorrent details
+- [ ] T014 [US2] Implement the single qBittorrent adapter in `src/trovium/adapters/qbittorrent.py` (constitutions XVIII/XXVII: the only client-I/O code): login (`/api/v2/auth/login`, session cookie), list candidates (`torrents/info`), and policy operations `torrents/setLocation`, `torrents/pause`, `torrents/delete` for `--post-ingest {keep|pause|delete}`; expose a narrow interface (candidates-in, disposition-out) — ingest code elsewhere must not know qBittorrent details; malformed or unparseable API responses fail the run closed with a named cause rather than being skipped or synthesized into candidates (constitution VI)
 - [ ] T015 [US2] Wire client mode into `src/trovium/cli.py`: `--client-url` + env credentials → adapter candidates (complete vs not yet complete), same classify/library/placement flow as disk mode, `--post-ingest` applied only after successful `ingested` placement (FR-010), `not_yet_complete` skipped without error (Story 2 id 2)
 
 **Checkpoint**: Stories 1 and 2 both functional independently; `scripts/check.sh` green

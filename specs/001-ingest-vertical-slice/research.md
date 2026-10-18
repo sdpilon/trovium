@@ -54,6 +54,9 @@ ingest code speaks only to the adapter's narrow interface
 - Choosing qBittorrent's built-in "Run after complete" script hooks instead of
   a separate step: rejected — it hides the step inside the client and defeats
   single-purpose composability (XXV).
+- Malformed/unparseable client responses fail the run closed with a named
+  cause (constitution VI); the adapter never synthesizes candidate rows to
+  keep going.
 
 ## D3. CLI argument parsing
 
