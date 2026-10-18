@@ -44,6 +44,24 @@ The resolved meaning of a candidate's name(s).
 | episodes | set of (season, episode) ∅     | tv only                                                                                                                            |
 | year     | integer ∅                      | optional refinement                                                                                                                |
 
+**Canonical grammar markers** (vocabulary of T005's matcher; anything falling
+outside these, or matching ambiguously, resolves to `unresolvable` — the
+never-guess rule):
+
+- Movie: title tokens + optional 4-digit year (19xx/20xx) + quality marker
+  (e.g. `1080p`, `720p`, `2160p`) + container/codec tokens (`x264`, `HEVC`,
+  `mkv`) — e.g. `Movie.Production.2024.1080p-iGor`.
+- TV episode: series title tokens + `SxxEyy` (or `S0xE0y` range) marker,
+  optionally with a quality/codec suffix — e.g. `Shameless.US.S05E10.720p`.
+- TV season/series pack: series title + `Sxx` alone, or a `Season N` phrase,
+  contained in a directory holding two or more episode files — pack
+  detection requires the file-count signal; a lone `Sxx` name resolves
+  unresolvable.
+- Resolution precedence when several marker sets fit: episode marker beats
+  pack beats movie-with-year; no title tokens at all → `unresolvable`.
+- Quality/codec/year tokens are extraction signals for the grammar only,
+  never written into folder names by this step (FR-003 preserves names).
+
 **State transitions**: `unresolvable` is terminal for a run (candidate is
 reported, never placed — Edge Cases).
 
@@ -119,13 +137,13 @@ this table):
   deliberately" is always a caller-opt-in decision taken in a later step —
   never the default behavior of this step.
 
-| #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                           |
-| --- | -------------- | ------------ | -------------------------------------- | -------------------------------------------------------------------------------- |
-| 1   | move           | same volume  | none                                   | relocate (rename); disposition ingested                                          |
-| 2   | move           | same volume  | identical content                      | relocate; disposition ingested (idempotent net-zero) reported as already_handled |
-| 3   | move           | same volume  | same canonical name, different content | do not overwrite (Edge Cases); disposition `error` naming the conflict           |
-| 4   | move           | cross volume | none per v2                            | copy + delete source; seed-safety warning in record                              |
-| 5   | copy/hardlink  | —            | none                                   | original stays; disposition ingested                                             |
-| 6   | copy/hardlink  | —            | identical content                      | original stays; disposition already_handled (no duplicate created)               |
-| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003), reason recorded                         |
-| 8   | copy/hardlink  | —            | name clash, different content          | do not overwrite; disposition `error`                                            |
+| #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                          |
+| --- | -------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | move           | same volume  | none                                   | relocate (rename); disposition ingested                                                                                         |
+| 2   | move           | same volume  | identical content                      | verified no-op (extra relocation is net-zero); disposition `already_handled`; now-redundant source removed and removal reported |
+| 3   | move           | same volume  | same canonical name, different content | do not overwrite (Edge Cases); disposition `error` naming the conflict                                                          |
+| 4   | move           | cross volume | none                                   | copy + delete source; seed-safety warning in record                                                                             |
+| 5   | copy/hardlink  | —            | none                                   | original stays; disposition ingested                                                                                            |
+| 6   | copy/hardlink  | —            | identical content                      | original stays; disposition already_handled (no duplicate created)                                                              |
+| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003), reason recorded                                                                        |
+| 8   | copy/hardlink  | —            | name clash, different content          | do not overwrite; disposition `error`                                                                                           |
