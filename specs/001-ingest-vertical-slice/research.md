@@ -62,7 +62,8 @@ ingest code speaks only to the adapter's narrow interface
 ## D3. CLI argument parsing
 
 **Decision**: Python standard library `argparse`; the command is
-`trovium-ingest` with exactly the option set fixed by FR-012.
+`trovium-ingest` with exactly the option set fixed by FR-012. `typer`/`click`
+are rejected under the dependency policy (D8).
 
 **Rationale**: One command, eight options, strong typing requirements but no
 subcommands or plugins — argparse covers this with zero dependencies and full
@@ -120,3 +121,32 @@ either outcome because placement paths + classification travel in the record
 either way.
 
 **Alternatives considered**: deciding now — postponed deliberately.
+
+## D7. Diagnostics and logging
+
+**Decision**: No logging framework. A tiny in-repo `stderr` helper writes one
+deterministic line per problem (`error: <cause>` / `warn: <cause>`), with no
+timestamps, no log files, and no levels beyond the existing exit-code and
+`--on-fail` contracts. stdout carries only the run record.
+
+**Rationale**: The CLI contract already defines stdout/stderr and exit codes;
+a logging stack would add a dependency and non-deterministic output for no
+gain. Determinism also keeps dry-run parity (SC-005) testable.
+
+**Alternatives considered**: stdlib `logging` with a custom formatter
+(heavier configuration for no benefit at this size); structured logging
+libraries (dependency plus output-shape drift).
+
+## D8. Dependency policy
+
+**Decision**: One runtime dependency (`httpx`). Everything else is Python
+stdlib: `argparse`, `json`, `pathlib`, `os`, `shutil`, `hashlib`, `sys`. No
+media probing (`ffprobe`/`pymediainfo`) — classification uses names only
+(D1). No config-file parser; configuration is per-run CLI plus environment
+(FR-012). Dev tooling stays `pytest`/`mypy`/`ruff`; HTTP fixtures use
+`httpx.MockTransport`.
+
+**Rationale**: Constitution XX/XXV favor a small, inspectable surface; every
+added dependency is a supply-chain and Python-3.13-compatibility surface for a
+pipeline meant to run on an operator's machine. Explicitly recording the
+excluded libraries prevents accidental adoption during implementation.
