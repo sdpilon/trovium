@@ -94,26 +94,27 @@ summary.
 
 ---
 
-### User Story 3 - Filter which downloads are ingested (Priority: P3)
+### User Story 3 - Filter which candidates are ingested (Priority: P3)
 
-A user wants to limit a run — e.g. only movies, only one specific
-download, or everything — and passes that intent to the ingest step. The step
-processes only matching completed downloads and reports the declared scope in
-its summary.
+A user wants to limit a run — e.g. only movies, only one specific candidate,
+or everything — and passes that intent to the ingest step. The step processes
+only matching candidates from whichever source the run declared, and reports
+the declared scope in its summary.
 
 **Why this priority**: Users need control over a run before trusting it
 unattended; it refines Story 1 without changing its core.
 
 **Independent Test**: Can be tested by running ingest with different scope
-selections against a client containing several completed downloads of
-different kinds and verifying exactly the selected items were touched.
+selections against a fixture source (client or directory) containing several
+candidates of different kinds and verifying exactly the selected items were
+touched.
 
 **Acceptance Scenarios**:
 
-1. **Given** completed downloads of both a movie and a TV episode exist, **When**
-   ingest runs scoped to one category, **Then** only items of that category are
+1. **Given** candidates of both a movie and a TV episode exist, **When** ingest
+   runs scoped to one category, **Then** only items of that category are
    ingested and the other is left untouched.
-2. **Given** no completed downloads match the selector, **When** ingest runs,
+2. **Given** no candidates match the selector, **When** ingest runs,
    **Then** it succeeds, reports an empty result clearly, and touches nothing.
 
 ---
@@ -122,20 +123,20 @@ different kinds and verifying exactly the selected items were touched.
 
 A user wants to see what ingest _would_ do before letting it do it. The step
 can be run in an inspect-only mode that emits precisely the actions it would
-take, while making no changes to the client or the library.
+take, while making no changes to the source or the library.
 
 **Why this priority**: Builds trust and supports dry-run verification in
 automation, but delivers value only after Stories 1–2 work.
 
 **Independent Test**: Can be tested by running the step in inspect-only mode
-against a client with completed downloads and verifying the emitted plan is
-exact and the client and library are byte-for-byte unchanged.
+against a fixture source (client or directory) with candidates and verifying
+the emitted plan is exact and both the source and library are unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** completed downloads exist, **When** ingest runs in inspect-only
-   mode, **Then** it emits a per-item action plan and neither the client nor
-   the library is modified.
+1. **Given** candidates exist in the declared source, **When** ingest runs in
+   inspect-only mode, **Then** it emits a per-item action plan and neither the
+   source (client or directory) nor the library is modified.
 2. **Given** the same state, **When** ingest runs in inspect-only mode and then
    for real, **Then** the executed outcome matches the previously emitted plan
    item-for-item.
@@ -175,10 +176,10 @@ exact and the client and library are byte-for-byte unchanged.
   acquiring completed downloads (`--client-url`), or media already on the
   local filesystem (`--source <path>`), treating the latter as the primary,
   essential case. The two sources are mutually exclusive in one run.
-- **FR-002**: The ingest step MUST classify each completed download as a
-  movie, a TV episode/season, or unresolvable, using the download's own torrent
-  metadata and file layout rather than any external lookup service (scope of
-  this slice).
+- **FR-002**: The ingest step MUST classify each candidate as a movie, a TV
+  episode/season, or unresolvable, using only the candidate's own name(s) and
+  file layout (torrent metadata in client mode; entry/file names in disk mode)
+  rather than any external lookup service (scope of this slice).
 - **FR-003**: The ingest step MUST place each classified, resolvable item into
   its library destination as flat, readable files (directories a person can
   navigate), preserving complete and playable media content. File names of the
@@ -211,9 +212,10 @@ exact and the client and library are byte-for-byte unchanged.
   client is unreachable or credentials are invalid and MUST NOT report any
   success in that run.
 - **FR-009**: The ingest step MUST be re-runnable at any time with no hidden
-  state: all decisions it makes on a run derive from the client state, the
-  library contents, and any explicitly declared run options — never from
-  memory between runs.
+  state: all decisions it makes on a run derive from the declared source's
+  state (the download client in client mode, the source directory in disk
+  mode), the library contents, and any explicitly declared run options — never
+  from memory between runs.
 - **FR-010**: The ingest step MUST NOT mark a download as handled in the
   client unless its library placement for that item has fully succeeded.
 - **FR-011**: All handling of qBittorrent must be confined to the single
@@ -245,9 +247,11 @@ exact and the client and library are byte-for-byte unchanged.
 
 ### Key Entities _(include if feature involves data)_
 
-- **Candidate**: One completed download as observed in the client. Attributes:
-  name, category/volume, completion state, resolved classification
-  (movie/TV/unresolvable), and its disposition this run.
+- **Candidate**: One completed download as observed in the client, or one
+  direct child entry of `--source`. Attributes: name, category/volume (client
+  mode), completion state (client mode; disk candidates are always complete),
+  resolved classification (movie/TV/unresolvable), and its disposition this
+  run.
 - **Library item**: The media entity placed in the library. Attributes: kind
   (movie or episode/season), resolved title, placement path, and file(s)
   making up the item.
@@ -292,7 +296,8 @@ exact and the client and library are byte-for-byte unchanged.
   case. Other download clients are out of scope and, per the constitution,
   will be absorbed into the single adapter when they arrive.
 - Media title parsing in this slice uses only information available inside the
-  download's own torrent name and file list (no title-quality/edition lookup
+  candidate itself — the torrent name and file list in client mode, the entry
+  name and nested file names in disk mode (no title-quality/edition lookup
   services). Ambiguous or unlabeled titles are surfaced as unresolvable, not
   guessed at.
 - Post-ingest handling of the source item in the client (e.g. whether to pause
