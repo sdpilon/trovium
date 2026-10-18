@@ -247,7 +247,10 @@ the emitted plan is exact and both the source and library are unchanged.
   explicit named error before any work happens. Each direct child entry of
   `--source` (a file or a directory) is exactly one candidate, and a
   candidate's contents may include arbitrarily nested media files that move
-  or copy together as one library item.
+  or copy together as one library item. A `--source` path that is missing, not
+  a directory, or unreadable is refused as a misuse before any work; a read
+  failure on a candidate's files during placement is a per-item `error` with a
+  named cause, governed by `--on-fail`.
 
 ### Key Entities _(include if feature involves data)_
 

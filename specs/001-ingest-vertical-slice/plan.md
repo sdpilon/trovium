@@ -12,8 +12,9 @@ filesystem directory (`--source`, the primary case), classifies each candidate
 as movie / TV / unresolvable using only names present in the candidate itself,
 places resolvable items into the library (folder structure derived, original
 file names preserved), and emits a stable machine-readable JSON run record.
-Idempotent by construction: no stored state other than the library and the
-client. Implementation is Python ≥3.13, typed, exercised through `uv`.
+Idempotent by construction: no stored state other than the library and
+whichever source a run declared. Implementation is Python ≥3.13, typed,
+exercised through `uv`.
 
 ## Technical Context
 
@@ -35,7 +36,7 @@ client. Implementation is Python ≥3.13, typed, exercised through `uv`.
 
 **Storage**: N/A — no database, no ledger, no hidden state (constitution XXV). The library plus whichever source a run declared (download client or source directory) are the only state; configuration arrives per run via CLI options and environment
 
-**Testing**: `pytest` (unit, contract, integration), registered in the canonical `scripts/check.sh` quality gate
+**Testing**: `pytest` (unit, contract, integration), registered in the canonical `scripts/check.sh` quality gate, including policy/contract guards: dependency-budget assertion (T023, research D8) and fail-closed adapter contract tests (T013, constitution VI)
 
 **Target Platform**: macOS and Linux (the pipeline operators' terminals); no GUI
 

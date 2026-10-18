@@ -47,6 +47,8 @@ command line and never emitted into the run record (constitution I, FR-012).
 
 - `--source` together with `--client-url` → refuse (FR-013).
 - `--source` together with `--post-ingest` → refuse (FR-013).
+- `--source` that does not exist, is not a directory, or is unreadable → refuse
+  (exit 2), naming the path.
 - No source given and `TROVIUM_CLIENT_URL` unset → refuse.
 - Missing, non-directory, or unreadable `--library-root` (in either mode) → refuse.
 - Refusal messages name the conflicting option and exit code 2.
@@ -58,6 +60,12 @@ command line and never emitted into the run record (constitution I, FR-012).
   (FR-008).
 - Placement executes only for fully classified candidates; file names are
   preserved byte-for-byte (FR-003).
+- A **read failure on source files during placement** (e.g. permission denied
+  on a candidate's file) is a per-item failure, not a run-level one: the item's
+  disposition is `error` with the named cause, governed by
+  `--on-fail {stop|continue}` (default `continue`); nothing is half-placed and
+  no success is recorded for that item. A source that disappears entirely
+  mid-run is treated the same way per item and named in the record.
 
 ## Exit codes
 

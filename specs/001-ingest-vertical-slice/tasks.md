@@ -53,7 +53,7 @@
       ledger): identity by (kind, title, season, file-name set) first; within
       equal identity, size-equal then BLAKE2b content-hash equal, with the hash
       computed only when sizes are equal (data-model.md hash-scope section)
-- [ ] T007 Implement placement operations in `src/trovium/placement.py`: `move` (rename on same filesystem; copy+delete fallback across volumes), `copy` (`shutil.copy2`, originals remain), `hardlink` (`os.link`, falling back to copy across volumes per FR-003; outcomes per data-model.md Behavior matrix rows 1–8); sameness detection follows the pinned conflict-outcome policy — no overwrite, no silent replace (never overrides the matrix); per-item result becomes a Disposition with named reason on failure; a destination on an unwritable/unavailable volume yields disposition `error` with the named IOError cause, consumed by `--on-fail {stop|continue}` (matrix row-4 sibling)
+- [ ] T007 Implement placement operations in `src/trovium/placement.py`: `move` (rename on same filesystem; copy+delete fallback across volumes), `copy` (`shutil.copy2`, originals remain), `hardlink` (`os.link`, falling back to copy across volumes per FR-003; outcomes per data-model.md Behavior matrix rows 1–8); sameness detection follows the pinned conflict-outcome policy — no overwrite, no silent replace (never overrides the matrix); per-item result becomes a Disposition with named reason on failure; a destination on an unwritable/unavailable volume yields disposition `error` with the named IOError cause, consumed by `--on-fail {stop|continue}` (matrix row-4 sibling); a read failure on a candidate's source files (e.g. permission denied) likewise yields a per-item `error` with the named cause under `--on-fail`, leaving nothing half-placed and recording no success for that item
 - [ ] T008 Implement the CLI in `src/trovium/cli.py`: exactly the option set, defaults, and env variables of `contracts/cli.md` (`--client-url` default from `TROVIUM_CLIENT_URL`, credentials from `TROVIUM_CLIENT_USERNAME`/`TROVIUM_CLIENT_PASSWORD` only); refuse misuse before any work: `--source` + `--client-url`, `--source` + `--post-ingest`, missing source with URL unset (exit 2 with a message naming the conflicting option); exit 0 run completed / 2 misuse / 3 client unreachable-or-auth-invalid (FR-008)
 
 **Checkpoint**: record/classification/destination/placement/cli cores compile; contract tests can target them; user stories now add sources and wiring
@@ -70,7 +70,7 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T009 [P] [US1] Contract test in tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty) including a non-directory or unreadable `--library-root`, exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
+- [ ] T009 [P] [US1] Contract test in tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty) including a non-directory or unreadable `--library-root` and a missing/non-directory/unreadable `--source`, exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
 - [ ] T010 [P] [US1] Integration test in tests/integration/test_disk_ingest.py covering Story 1 acceptance ids 1–3: media placed with original filenames, non-media child reported `rejected_out_of_scope` with reason, unresolvable child reported `unresolvable`, re-run is a no-op reporting `already_handled` (SC-002), counts reconcile, and no credentials in output (constitution I)
 
 ### Implementation for User Story 1
@@ -127,11 +127,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T018 [P] [US4] Contract test in tests/contract/test_dry_run.py: `dry_run: true` record contains a full per-item `actions` plan; plan parity invariant — the real run executed right after produces the same actions field-for-field (SC-005); library snapshot hash unchanged under dry-run (Story 4 id 1)
+- [ ] T018 [P] [US4] Contract test in tests/contract/test_dry_run.py: `dry_run: true` record contains a full per-item `actions` plan; plan parity invariant — the real run executed right after produces the same actions field-for-field (SC-005); both the declared source (directory contents in disk mode; client state via the stubbed transport in client mode) and the library are unchanged under dry-run (Story 4 id 1)
 
 ### Implementation for User Story 4
 
-- [ ] T019 [US4] Implement dry-run wiring in `src/trovium/cli.py` + `src/trovium/placement.py`: plan path computes dispositions/actions without touching the library or client (no `setLocation`/`pause`/`delete` and no placement writes when `dry_run` is set), record carries the same schema with `dry_run: true` (FR-006)
+- [ ] T019 [US4] Implement dry-run wiring in `src/trovium/cli.py` + `src/trovium/placement.py`: plan path computes dispositions/actions without touching the declared source (no filesystem writes anywhere under `--source` in disk mode; no `setLocation`/`pause`/`delete` in client mode) and without touching the library, when `dry_run` is set; record carries the same schema with `dry_run: true` (FR-006)
 
 **Checkpoint**: All four user stories functional independently
 
@@ -172,6 +172,7 @@
 - T004, T005 (Phase 2) — different files
 - T009, T010 (Phase 3) — different test files
 - T013 (Phase 4), T016 (Phase 5), T018 (Phase 6) — different files, all once stories' foundations exist
+- T020, T023 (Phase 7) — different files (README vs unit test)
 - With multiple developers: US1 and US2 work can proceed in parallel after Phase 2, since both only wire existing foundational cores
 
 ---
