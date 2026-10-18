@@ -46,10 +46,18 @@ file created; record counts reconcile.
 ## Scenario 3: inspect-only mode emits the plan, changes nothing (FR-006, Story P4)
 
 ```sh
-before=$(find "$tmp/library" -type f | sort | sha256sum)
+# portable snapshot: shasum on macOS, sha256sum on Linux
+snapshot() {
+  find "$tmp/library" -type f | sort | xargs shasum -a 256 2>/dev/null \
+    || find "$tmp/library" -type f | sort | xargs sha256sum
+}
+before=$(snapshot)
 uv run trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --dry-run --json compact
-after=$(find "$tmp/library" -type f | sort | sha256sum)
+after=$(snapshot)
 ```
+
+> macOS ships `shasum` (not `sha256sum`); the fallback keeps the scenario
+> runnable on either target platform.
 
 **Expected**: exit 0; record has `dry_run: true` with full `actions`; snapshot
 hash `before == after` (library unchanged); with a client configured, the

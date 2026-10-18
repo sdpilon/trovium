@@ -156,9 +156,9 @@ the emitted plan is exact and both the source and library are unchanged.
   default: it is reported as an error naming the conflicting path; replacing
   deliberately is always a caller-opt-in decision taken in a later step,
   not this step's default.
-- What happens when a download is completed but is not a media item (a
-  release containing extras, samples, or unrelated files)? Non-media content
-  is not ingested; the summary says why.
+- What happens when a candidate (download or source entry) is not a media item
+  (a release containing extras, samples, or unrelated files)? Non-media
+  content is not ingested; the summary says why.
 - What happens when a download is finished but another client-side state (still
   seeding with post-ingest removal policy unset) makes handling ambiguous? The
   step's client-facing behavior is explicit in its summary rather than assumed.
@@ -192,22 +192,26 @@ the emitted plan is exact and both the source and library are unchanged.
   place (a hardlink shares storage only when the source and destination are on
   the same filesystem, otherwise behaving as copy).
 - **FR-004**: The ingest step MUST NOT double-handle media it has already
-  ingested, whether those items are still present in the client or no longer
-  are. Recognition is convention-based and stateless: on each run the step
+  ingested, whether the candidate is still present in the declared source (the
+  client or the source directory) or no longer is. Recognition is
+  convention-based and stateless: on each run the step
   resolves the candidate's library destination by the same rules it would use
   to place it, and an existing matching item in the library determines the
   already-handled disposition — no ledger or stored state is consulted or
   maintained.
 - **FR-005**: The ingest step MUST support limiting a run by category (movies
   only, TV only, or all).
-- **FR-006**: The ingest step MUST run without making any change to the client
-  or library when invoked in an inspect-only mode, and MUST emit exactly the
-  actions it would otherwise take.
+- **FR-006**: The ingest step MUST run without making any change to the
+  declared source (the download client in client mode, the source directory
+  in disk mode) or to the library when invoked in its inspect-only mode
+  (`--dry-run`), and MUST emit exactly the actions it would otherwise take.
 - **FR-007**: The ingest step MUST emit a stable, machine-readable summary on
-  standard output after every run — per-item status (ingested, skipped-not-
-  complete, skipped-unresolvable, already-handled, error) and counts — as
-  machine-readable JSON by default, with the `--json {compact|pretty}` option
-  selecting the formatting of that same data.
+  standard output after every run — per-item disposition using exactly the
+  canonical enum `ingested`, `already_handled`, `not_yet_complete`,
+  `unresolvable`, `rejected_out_of_scope`, `error` (with `reason` required
+  whenever `error` is used), plus counts — as machine-readable JSON by default,
+  with the `--json {compact|pretty}` option selecting the formatting of that
+  same data (contracts/record-schema.md is authoritative).
 - **FR-008**: The ingest step MUST fail with an explicit named error when the
   client is unreachable or credentials are invalid and MUST NOT report any
   success in that run.
@@ -255,9 +259,9 @@ the emitted plan is exact and both the source and library are unchanged.
 - **Library item**: The media entity placed in the library. Attributes: kind
   (movie or episode/season), resolved title, placement path, and file(s)
   making up the item.
-- **Disposition**: Outcome of one candidate in one run: ingested /
-  already-handled / not-yet-complete / unresolvable / rejected-out-of-scope /
-  error-with-reason.
+- **Disposition**: Outcome of one candidate in one run, using the canonical
+  enum: `ingested` / `already_handled` / `not_yet_complete` / `unresolvable` /
+  `rejected_out_of_scope` / `error` (reason required with `error`).
 - **Run summary**: The emitted record of one run: declared scope, plan (when
   inspect-only), per-candidate dispositions, total counts, and errors.
 - **Placement context**: The variables whose values jointly determine a
@@ -285,7 +289,7 @@ the emitted plan is exact and both the source and library are unchanged.
   the user can read and act on; zero items are silently skipped.
 - **SC-004**: The emitted run summary is sufficient for a user (or the next
   pipeline step) to reconstruct what happened without looking at the library
-  or client again.
+  or the declared source again.
 - **SC-005**: Running ingest in inspect-only mode and then for real produces
   byte-identical outcomes, verified in testing.
 
