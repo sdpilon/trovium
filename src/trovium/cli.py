@@ -21,6 +21,7 @@ from trovium.library import compare_existing, resolve_destination
 from trovium.placement import apply_placement, plan_placement
 from trovium.record import (
     Category,
+    ClientAction,
     Declared,
     Disposition,
     ItemRecord,
@@ -67,7 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--post-ingest",
         choices=[item.value for item in PostIngest],
-        default=PostIngest.KEEP,
+        default=None,
+        help="client-side policy after a successful placement (client mode only)",
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -90,7 +92,7 @@ def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
 
     if source is not None and client_url:
         raise MisuseError("--source cannot be combined with --client-url")
-    if source is not None and args.post_ingest != PostIngest.KEEP:
+    if source is not None and args.post_ingest is not None:
         raise MisuseError("--post-ingest applies only to client mode, not to --source")
     if source is None and not client_url:
         raise MisuseError(
@@ -125,7 +127,11 @@ def declared_options(
         category=Category(args.category),
         mode=Mode(args.mode),
         on_fail=OnFail(args.on_fail),
-        post_ingest=None if source is not None else PostIngest(args.post_ingest),
+        post_ingest=(
+            None
+            if source is not None
+            else PostIngest(args.post_ingest or PostIngest.KEEP)
+        ),
     )
 
 
@@ -214,6 +220,7 @@ def run_client(
     candidates = client_candidates(
         tuple(
             (
+                entry.hash,
                 entry.name,
                 entry.content_path,
                 entry.completion,
@@ -242,13 +249,29 @@ def run_client(
         if record is None:
             continue
         if record.disposition is Disposition.INGESTED and not dry_run:
+            torrent_hash = candidate.client_hash
+            assert torrent_hash is not None  # client candidates always carry hash
             try:
                 if declared.mode is Mode.MOVE and record.destination is not None:
-                    client.set_location(candidate.name, Path(record.destination))
+                    client.set_location(torrent_hash, Path(record.destination))
+                    record.client_actions.append(
+                        ClientAction(
+                            op="setLocation",
+                            detail=(
+                                f"hashes={torrent_hash} location={record.destination}"
+                            ),
+                        )
+                    )
                 if declared.post_ingest is PostIngest.PAUSE:
-                    client.pause(candidate.name)
+                    client.pause(torrent_hash)
+                    record.client_actions.append(
+                        ClientAction(op="pause", detail=f"hashes={torrent_hash}")
+                    )
                 elif declared.post_ingest is PostIngest.DELETE:
-                    client.delete(candidate.name)
+                    client.delete(torrent_hash)
+                    record.client_actions.append(
+                        ClientAction(op="delete", detail=f"hashes={torrent_hash}")
+                    )
             except AdapterError as error:
                 record = ItemRecord(
                     name=candidate.name,
@@ -259,6 +282,7 @@ def run_client(
                     title=record.title,
                     destination=record.destination,
                     actions=record.actions,
+                    client_actions=record.client_actions,
                 )
         summary.items.append(record)
         if record.disposition is Disposition.ERROR and declared.on_fail is OnFail.STOP:

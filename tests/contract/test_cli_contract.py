@@ -73,6 +73,25 @@ def test_source_with_post_ingest_is_refused(
     assert "--post-ingest" in captured.err
 
 
+def test_source_with_explicit_post_ingest_keep_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = cli.main(
+        [
+            "--source",
+            str(_source(tmp_path)),
+            "--post-ingest",
+            "keep",
+            "--library-root",
+            str(_library(tmp_path)),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_MISUSE
+    assert captured.out == ""
+    assert "--post-ingest" in captured.err
+
+
 def test_no_source_declared_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

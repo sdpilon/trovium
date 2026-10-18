@@ -102,15 +102,30 @@ def test_hardlink_os_link_failure_falls_back_to_copy(
     assert placed.read_bytes() == b"payload"
 
 
-def test_identical_content_is_already_handled_without_writes(tmp_path: Path) -> None:
+def test_identical_content_copy_mode_leaves_source_untouched(tmp_path: Path) -> None:
+    source = tmp_path / "movie.mkv"
+    source.write_bytes(b"payload")
+    destination = tmp_path / "lib" / "Movie"
+    plan = plan_placement(
+        Mode.COPY, (source,), destination, ExistingItem(sameness=Sameness.IDENTICAL)
+    )
+    outcome = apply_placement(Mode.COPY, (source,), plan)
+    assert outcome.disposition is Disposition.ALREADY_HANDLED
+    assert source.exists()
+
+
+def test_identical_content_move_mode_removes_redundant_source(tmp_path: Path) -> None:
     source = tmp_path / "movie.mkv"
     source.write_bytes(b"payload")
     destination = tmp_path / "lib" / "Movie"
     plan = plan_placement(
         Mode.MOVE, (source,), destination, ExistingItem(sameness=Sameness.IDENTICAL)
     )
-    assert plan.disposition is Disposition.ALREADY_HANDLED
-    assert source.exists()
+    outcome = apply_placement(Mode.MOVE, (source,), plan)
+    assert outcome.disposition is Disposition.ALREADY_HANDLED
+    assert outcome.reason is not None
+    assert "redundant source removed" in outcome.reason
+    assert not source.exists()
 
 
 def test_same_name_different_content_is_error_never_overwrite(tmp_path: Path) -> None:

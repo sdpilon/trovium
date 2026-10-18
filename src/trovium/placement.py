@@ -95,6 +95,28 @@ def plan_placement(
 
 def apply_placement(mode: Mode, files: tuple[Path, ...], plan: Plan) -> Plan:
     """Execute ``plan``; returns a plan whose disposition is the outcome."""
+    if plan.disposition is Disposition.ALREADY_HANDLED:
+        if mode is not Mode.MOVE:
+            return plan
+        # move mode completes the move-equivalent: the source copy is now
+        # redundant once identical content is verified in the library
+        try:
+            for source in files:
+                source.unlink(missing_ok=True)
+        except OSError as error:
+            return Plan(
+                disposition=Disposition.ERROR,
+                destination=plan.destination,
+                reason=(
+                    "identical content already in the library, but the redundant "
+                    f"source could not be removed: {error.strerror or error}"
+                ),
+            )
+        return Plan(
+            disposition=Disposition.ALREADY_HANDLED,
+            destination=plan.destination,
+            reason="identical content already in the library; redundant source removed",
+        )
     if plan.disposition is not Disposition.INGESTED or plan.destination is None:
         return plan
 

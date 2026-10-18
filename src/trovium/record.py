@@ -90,6 +90,18 @@ class Action:
         }
 
 
+@dataclass(frozen=True)
+class ClientAction:
+    """One client-facing operation performed for an ingested item."""
+
+    op: str
+    detail: str
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialize this client operation."""
+        return {"op": self.op, "detail": self.detail}
+
+
 @dataclass
 class ItemRecord:
     """Per-candidate detail in the run record."""
@@ -102,10 +114,11 @@ class ItemRecord:
     title: str | None = None
     destination: str | None = None
     actions: list[Action] = field(default_factory=list)
+    client_actions: list[ClientAction] = field(default_factory=list)
 
     def to_json(self) -> dict[str, Any]:
         """Serialize this item to its contract shape."""
-        return {
+        payload: dict[str, Any] = {
             "name": self.name,
             "source": self.source.value,
             "disposition": self.disposition.value,
@@ -115,6 +128,11 @@ class ItemRecord:
             "destination": self.destination,
             "actions": [action.to_json() for action in self.actions],
         }
+        if self.client_actions:
+            payload["client_actions"] = [
+                action.to_json() for action in self.client_actions
+            ]
+        return payload
 
 
 @dataclass(frozen=True)
@@ -177,12 +195,6 @@ def emit(summary: RunSummary, style: JsonStyle, stream: TextIO | None = None) ->
     out = sys.stdout if stream is None else stream
     out.write(render(summary, style))
     out.write("\n")
-
-
-def warn(message: str, stream: TextIO | None = None) -> None:
-    """Write one deterministic diagnostic line to stderr (research D7)."""
-    err = sys.stderr if stream is None else stream
-    err.write(f"warn: {message}\n")
 
 
 def fail(message: str, stream: TextIO | None = None) -> None:

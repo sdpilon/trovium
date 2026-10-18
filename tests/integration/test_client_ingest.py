@@ -22,8 +22,10 @@ def _torrent(
     progress: float = 1.0,
     state: str = "uploading",
     category: str = "movies",
+    torrent_hash: str = "h-" + "0" * 39,
 ) -> dict[str, Any]:
     return {
+        "hash": torrent_hash,
         "name": name,
         "progress": progress,
         "state": state,
@@ -70,6 +72,7 @@ def test_completed_torrent_is_ingested_and_client_updated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[str] = []
+    bodies: dict[str, str] = {}
 
     content = tmp_path / "downloads" / "Movie.Production.2024.1080p-iGor"
     content.mkdir(parents=True)
@@ -79,6 +82,7 @@ def test_completed_torrent_is_ingested_and_client_updated(
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request.url.path)
+        bodies[request.url.path] = request.content.decode()
         if request.url.path == "/api/v2/auth/login":
             return httpx.Response(200, text="Ok.")
         if request.url.path == "/api/v2/torrents/info":
@@ -253,9 +257,11 @@ def test_post_ingest_pause_and_delete_are_applied_after_success(
     (content / "Movie.Production.2024.1080p-iGor.mkv").write_bytes(b"bytes")
     library = tmp_path / "library"
     library.mkdir()
+    bodies: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request.url.path)
+        bodies[request.url.path] = request.content.decode()
         if request.url.path == "/api/v2/auth/login":
             return httpx.Response(200, text="Ok.")
         if request.url.path == "/api/v2/torrents/info":
@@ -279,6 +285,8 @@ def test_post_ingest_pause_and_delete_are_applied_after_success(
     assert code == 0
     assert record["items"][0]["disposition"] == "ingested"
     assert "/api/v2/torrents/delete" in calls
+    assert record["items"][0]["client_actions"][-1]["op"] == "delete"
+    assert "hashes=h-" in bodies["/api/v2/torrents/delete"]
 
 
 def test_client_failure_after_placement_is_reported_as_item_error(
@@ -355,3 +363,38 @@ def test_dry_run_in_client_mode_does_not_call_the_client(
     assert "/api/v2/torrents/setLocation" not in calls
     assert "/api/v2/torrents/delete" not in calls
     assert content.exists()
+
+
+def test_client_mode_dry_run_plan_matches_the_real_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Movie.Production.2024.1080p-iGor"
+    content.mkdir(parents=True)
+    (content / "Movie.Production.2024.1080p-iGor.mkv").write_bytes(b"bytes")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/torrents/info":
+            return httpx.Response(
+                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+            )
+        return httpx.Response(200, text="Ok.")
+
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=httpx.MockTransport(handler)
+        ),
+    )
+
+    code, planned, _ = _run(library, "--dry-run")
+    assert code == 0
+    code, executed, _ = _run(library)
+
+    assert code == 0
+    assert planned["items"][0]["actions"] == executed["items"][0]["actions"]
+    assert planned["items"][0]["destination"] == executed["items"][0]["destination"]
