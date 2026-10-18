@@ -11,8 +11,9 @@ decision, rationale, and alternatives considered.
 typed, with the rule "resolve or report unresolvable — never guess".
 
 **Rationale**: The spec (FR-002, Assumptions) requires classification to be
-based only on the candidate's own torrent/display name and file layout, and
-explicitly forbids guessing at ambiguous titles (Edge Cases). Industry
+based only on the candidate's own name(s) and file layout — torrent metadata
+in client mode, entry and nested file names in disk mode — and explicitly
+forbids guessing at ambiguous titles (Edge Cases). Industry
 guessers such as `guessit` are heavyweight regex-machine libraries whose whole
 purpose is to guess aggressively — the exact failure mode the spec rejects —
 and their table-driven internals are hostile to the strict-typing goal

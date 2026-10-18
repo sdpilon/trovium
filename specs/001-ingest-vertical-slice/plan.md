@@ -21,7 +21,7 @@ client. Implementation is Python ≥3.13, typed, exercised through `uv`.
 
 **Primary Dependencies**: `httpx` (qBittorrent WebUI API v2 client in the adapter); `pytest` (tests). Special-purpose discloser: no title-guessing libraries — classification is a minimal hand-rolled matcher (see research.md)
 
-**Storage**: N/A — no database, no ledger, no hidden state (constitution XXV). The library and the download client are the only state; configuration arrives per run via CLI options and environment
+**Storage**: N/A — no database, no ledger, no hidden state (constitution XXV). The library plus whichever source a run declared (download client or source directory) are the only state; configuration arrives per run via CLI options and environment
 
 **Testing**: `pytest` (unit, contract, integration), registered in the canonical `scripts/check.sh` quality gate
 
