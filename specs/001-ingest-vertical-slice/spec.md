@@ -148,9 +148,13 @@ exact and the client and library are byte-for-byte unchanged.
   unlabeled title)? The item is not guessed at: it is skipped and surfaced in
   the summary as unresolved for the user to handle.
 - What happens when the target library location already contains an identical
-  file? The step does not overwrite blindly; it detects sameness and either
-  skips the redundant copy or replaces it deliberately — the outcome is
-  reported, never silent.
+  file? The placement degrades to a verified no-op and the item is reported
+  as `already_handled` — never re-copied, never silently replaced; in move
+  mode the now-redundant source file is removed and this removal is
+  reported. A same-name different-content collision is never overwritten by
+  default: it is reported as an error naming the conflicting path; replacing
+  deliberately is always a caller-opt-in decision taken in a later step,
+  not this step's default.
 - What happens when a download is completed but is not a media item (a
   release containing extras, samples, or unrelated files)? Non-media content
   is not ingested; the summary says why.
