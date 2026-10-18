@@ -8,8 +8,8 @@ document's schema.
 ## Usage
 
 ```text
-trovium-ingest [--client-url URL | --source PATH]
-               [--library-root PATH]
+trovium-ingest (--client-url URL | --source PATH)
+               --library-root PATH
                [--category {movie,tv,all}]
                [--mode {move,copy,hardlink}]
                [--post-ingest {keep,pause,delete}]
@@ -20,17 +20,17 @@ trovium-ingest [--client-url URL | --source PATH]
 
 ## Options
 
-| Option                              | Required                            | Default                  | Applies to       | Notes                                                          |
-| ----------------------------------- | ----------------------------------- | ------------------------ | ---------------- | -------------------------------------------------------------- |
-| `--client-url URL`                  | one of `--client-url` or `--source` | env `TROVIUM_CLIENT_URL` | client mode      | base URL of qBittorrent WebUI endpoint                         |
-| `--source PATH`                     | as above                            | —                        | disk mode        | directory whose direct children are candidates (FR-013)        |
-| `--library-root PATH`               | required in both modes              | —                        | both             | library destination root; layout convention applies beneath it |
-| `--category {movie,tv,all}`         | no                                  | `all`                    | both             | run scope filter (FR-005)                                      |
-| `--mode {move,copy,hardlink}`       | no                                  | `move`                   | both             | placement semantics (FR-012)                                   |
-| `--post-ingest {keep,pause,delete}` | no                                  | `keep`                   | client mode only | client-side policy after successful placement (FR-010)         |
-| `--dry-run`                         | no                                  | off                      | both             | inspect-only: emit the plan, change nothing (FR-006)           |
-| `--on-fail {stop,continue}`         | no                                  | `continue`               | both             | per-item failure policy (FR-012)                               |
-| `--json {compact,pretty}`           | no                                  | `pretty`                 | both             | formatting of the run record (FR-007)                          |
+| Option                              | Required                            | Default                  | Applies to       | Notes                                                                                                                                                                          |
+| ----------------------------------- | ----------------------------------- | ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--client-url URL`                  | one of `--client-url` or `--source` | env `TROVIUM_CLIENT_URL` | client mode      | base URL of qBittorrent WebUI endpoint                                                                                                                                         |
+| `--source PATH`                     | as above                            | —                        | disk mode        | directory whose direct children are candidates (FR-013)                                                                                                                        |
+| `--library-root PATH`               | required (both modes)               | —                        | both             | library destination root; layout convention applies beneath it. No default exists — a missing, non-directory, or unreadable path is a misuse refusal (exit 2, named on stderr) |
+| `--category {movie,tv,all}`         | no                                  | `all`                    | both             | run scope filter (FR-005)                                                                                                                                                      |
+| `--mode {move,copy,hardlink}`       | no                                  | `move`                   | both             | placement semantics (FR-012)                                                                                                                                                   |
+| `--post-ingest {keep,pause,delete}` | no                                  | `keep`                   | client mode only | client-side policy after successful placement (FR-010)                                                                                                                         |
+| `--dry-run`                         | no                                  | off                      | both             | inspect-only: emit the plan, change nothing (FR-006)                                                                                                                           |
+| `--on-fail {stop,continue}`         | no                                  | `continue`               | both             | per-item failure policy (FR-012)                                                                                                                                               |
+| `--json {compact,pretty}`           | no                                  | `pretty`                 | both             | formatting of the run record (FR-007)                                                                                                                                          |
 
 ## Environment variables
 
@@ -48,7 +48,7 @@ command line and never emitted into the run record (constitution I, FR-012).
 - `--source` together with `--client-url` → refuse (FR-013).
 - `--source` together with `--post-ingest` → refuse (FR-013).
 - No source given and `TROVIUM_CLIENT_URL` unset → refuse.
-- Missing/unreadable `--library-root` in source mode → refuse.
+- Missing, non-directory, or unreadable `--library-root` (in either mode) → refuse.
 - Refusal messages name the conflicting option and exit code 2.
 
 ## Completion-side behaviors

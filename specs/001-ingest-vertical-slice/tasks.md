@@ -46,7 +46,7 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Implement typed record models in `src/trovium/record.py`: `Disposition` enum with exactly the values `ingested`, `already_handled`, `not_yet_complete`, `unresolvable`, `rejected_out_of_scope`, `error` (`reason` required whenever `error` is used — data-model.md/r record-schema.md), `ItemRecord` (name, disposition, reason nullable, kind nullable, title nullable, destination nullable, actions list), `RunSummary` (source enum, dry_run flag, declared {library_root, category, mode, post_ingest, on_fail}, items list, counts derived and MUST equal items per contracts/record-schema.md), plus `emit(summary, style)` producing compact/pretty JSON to stdout — no credential values may ever appear (constitution I, FR-007, FR-012)
+- [ ] T004 [P] Implement typed record models in `src/trovium/record.py`: `Disposition` enum with exactly the values `ingested`, `already_handled`, `not_yet_complete`, `unresolvable`, `rejected_out_of_scope`, `error` (`reason` required whenever `error` is used — data-model.md + contracts/record-schema.md), `ItemRecord` (name, disposition, reason nullable, kind nullable, title nullable, destination nullable, actions list), `RunSummary` (source enum, dry_run flag, declared {library_root, category, mode, post_ingest, on_fail}, items list, counts derived and MUST equal items per contracts/record-schema.md), plus `emit(summary, style)` producing compact/pretty JSON to stdout — no credential values may ever appear (constitution I, FR-007, FR-012)
 - [ ] T005 [P] Implement the classification matcher in `src/trovium/classify.py`: from a candidate name and its nested file names classify movie (title + year/quality grammar), tv (series title + `S01E02`-style or season-pack markers), or `unresolvable`; ambiguous input MUST resolve to `unresolvable`, never guessed (FR-002, data-model.md Classification rules)
 - [ ] T006 Implement destination resolution and already-handled detection in `src/trovium/library.py`: derive the library destination from `--library-root` plus the layout convention (movies root / tv root with show and season subfolders), quoting FR-003: "destination _folder_ names … are derived by this step" while file names are preserved; expose `resolve_destination(classification, library_root)` and `existing_item_matches(destination, candidate_files)` used for the
       convention-based `already_handled` rule (FR-004 — matches on identity, no
@@ -70,7 +70,7 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T009 [P] [US1] Contract test in tiny tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty) including a non-directory or unreadable `--library-root`, exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
+- [ ] T009 [P] [US1] Contract test in tests/contract/test_cli_contract.py: misuse refusals (exit 2, named option, stdout empty) including a non-directory or unreadable `--library-root`, exit-code mapping, `--json` compact/pretty emit the same data shape per contracts/record-schema.md
 - [ ] T010 [P] [US1] Integration test in tests/integration/test_disk_ingest.py covering Story 1 acceptance ids 1–3: media placed with original filenames, non-media child reported `rejected_out_of_scope` with reason, unresolvable child reported `unresolvable`, re-run is a no-op reporting `already_handled` (SC-002), counts reconcile, and no credentials in output (constitution I)
 
 ### Implementation for User Story 1
@@ -143,7 +143,7 @@
 
 - [ ] T020 [P] Update `README.md` development section: document the `trovium-ingest` command, its options table (extract from `specs/001-ingest-vertical-slice/contracts/cli.md`), and the disk-source/client-mode examples
 - [ ] T021 Execute `specs/001-ingest-vertical-slice/quickstart.md` scenarios 1–5 as the executable acceptance checks for SC-001–SC-005 and record results in the session; fix anything red before continuing
-- [ ] T022 Run the full canonical gate `scripts/check.sh` and confirm green across ruff, mypy, pytest, and the markdown/file linters (constitution XXII, XXVI)
+- [ ] T022 Run the full canonical gate `scripts/check.sh` and confirm green across ruff, mypy, pytest, and the markdown/file linters (constitution XXII, XXVI), including a timing observation for SC-001: a disk-source run over a fixture of 50 candidates (≈1000 files) must complete in under a minute on the run machine; record the observed duration next to the other scenario outcomes
 
 ---
 
