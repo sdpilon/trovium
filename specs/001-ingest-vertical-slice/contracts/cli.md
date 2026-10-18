@@ -55,9 +55,10 @@ command line and never emitted into the run record (constitution I, FR-012).
 
 ## Completion-side behaviors
 
-- In client mode, unreachable endpoint or invalid credentials → run fails
-  with a named error, exit code 3; nothing ingested, no success in the record
-  (FR-008).
+- In client mode, unreachable endpoint, invalid credentials, or a
+  **malformed/unparseable client response** → run fails closed with a named
+  error, exit code 3; nothing ingested, no success in the record (FR-008,
+  constitution VI).
 - Placement executes only for fully classified candidates; file names are
   preserved byte-for-byte (FR-003).
 - A **read failure on source files during placement** (e.g. permission denied

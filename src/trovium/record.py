@@ -71,11 +71,20 @@ class Disposition(StrEnum):
     ERROR = "error"
 
 
+class ActionKind(StrEnum):
+    """Kind of placement action recorded for an item."""
+
+    MOVE = "move"
+    COPY = "copy"
+    HARDLINK = "hardlink"
+    DELETE = "delete"
+
+
 @dataclass(frozen=True)
 class Action:
     """One planned or executed filesystem operation."""
 
-    op: Mode
+    op: ActionKind
     source: str
     destination: str
     bytes: int

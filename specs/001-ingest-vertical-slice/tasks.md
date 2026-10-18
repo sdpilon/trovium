@@ -242,3 +242,22 @@ code and `spec.md` / `plan.md` / `data-model.md`. Ordered by severity.
 - [x] T029 Review the unused `warn()` helper in `src/trovium/record.py`:
       either remove it or justify its retention in research decision D7
       (unrequested)
+
+---
+
+## Phase 9: Convergence
+
+**Purpose**: Close the two remaining gaps found by the second `/speckit.converge` pass.
+
+- [x] T030 Represent the planned removal of a redundant source in the
+      placement plan for `move` mode with identical library content, so an
+      inspect-only run exposes it: introduce an `op: "delete"` action (with
+      `from`/`to`/`bytes` semantics), update `plan_placement`/`apply_placement` in
+      `src/trovium/placement.py`, document the added action op in
+      `contracts/record-schema.md`, and extend `tests/contract/test_dry_run.py` to
+      assert dedup-path plan parity per SC-005, FR-006, and data-model.md Behavior
+      matrix row 2 (partial)
+- [x] T031 Document malformed/unparseable client responses as an exit-code 3
+      run-level failure in `contracts/cli.md` completion-side behaviors, matching
+      the implemented fail-closed behavior (constitution VI) and T013
+      (partial)

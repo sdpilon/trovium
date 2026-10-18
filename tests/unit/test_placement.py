@@ -9,7 +9,7 @@ import pytest
 
 from trovium.library import ExistingItem, Sameness
 from trovium.placement import apply_placement, plan_placement
-from trovium.record import Disposition, Mode
+from trovium.record import ActionKind, Disposition, Mode
 
 
 def _no_conflict() -> ExistingItem:
@@ -111,6 +111,7 @@ def test_identical_content_copy_mode_leaves_source_untouched(tmp_path: Path) -> 
     )
     outcome = apply_placement(Mode.COPY, (source,), plan)
     assert outcome.disposition is Disposition.ALREADY_HANDLED
+    assert outcome.actions == ()
     assert source.exists()
 
 
@@ -121,10 +122,12 @@ def test_identical_content_move_mode_removes_redundant_source(tmp_path: Path) ->
     plan = plan_placement(
         Mode.MOVE, (source,), destination, ExistingItem(sameness=Sameness.IDENTICAL)
     )
+    assert [action.op for action in plan.actions] == [ActionKind.DELETE]
     outcome = apply_placement(Mode.MOVE, (source,), plan)
     assert outcome.disposition is Disposition.ALREADY_HANDLED
     assert outcome.reason is not None
     assert "redundant source removed" in outcome.reason
+    assert [action.op for action in outcome.actions] == [ActionKind.DELETE]
     assert not source.exists()
 
 

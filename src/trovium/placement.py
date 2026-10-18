@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trovium.library import ExistingItem, Sameness
-from trovium.record import Action, Disposition, Mode
+from trovium.record import Action, ActionKind, Disposition, Mode
 
 _LINK_FALLBACK_ERRNOS = frozenset(
     {
@@ -51,9 +51,27 @@ def plan_placement(
 ) -> Plan:
     """Compute the placement plan; makes no changes (FR-006 discipline)."""
     if existing.sameness is Sameness.IDENTICAL:
+        removals: list[Action] = []
+        if mode is Mode.MOVE:
+            # move mode completes the move-equivalent by removing the now
+            # redundant source; the plan exposes that removal for dry runs
+            for source in files:
+                try:
+                    size = source.stat().st_size
+                except OSError:
+                    size = 0
+                removals.append(
+                    Action(
+                        op=ActionKind.DELETE,
+                        source=str(source),
+                        destination=str(destination / source.name),
+                        bytes=size,
+                    )
+                )
         return Plan(
             disposition=Disposition.ALREADY_HANDLED,
             destination=destination,
+            actions=tuple(removals),
             reason="identical content already in the library",
         )
     if existing.sameness is Sameness.COLLISION:
@@ -80,7 +98,7 @@ def plan_placement(
             )
         actions.append(
             Action(
-                op=mode,
+                op=ActionKind(mode.value),
                 source=str(source),
                 destination=str(destination / source.name),
                 bytes=size,
@@ -115,6 +133,7 @@ def apply_placement(mode: Mode, files: tuple[Path, ...], plan: Plan) -> Plan:
         return Plan(
             disposition=Disposition.ALREADY_HANDLED,
             destination=plan.destination,
+            actions=plan.actions,
             reason="identical content already in the library; redundant source removed",
         )
     if plan.disposition is not Disposition.INGESTED or plan.destination is None:
@@ -129,7 +148,7 @@ def apply_placement(mode: Mode, files: tuple[Path, ...], plan: Plan) -> Plan:
             _perform(mode, source, target, destination)
             actions.append(
                 Action(
-                    op=mode,
+                    op=ActionKind(mode.value),
                     source=str(source),
                     destination=str(target),
                     bytes=target.stat().st_size,

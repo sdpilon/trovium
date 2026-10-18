@@ -80,6 +80,38 @@ def test_executed_run_matches_the_emitted_plan(
         assert planned["actions"] == actual["actions"]
 
 
+def test_dry_run_exposes_dedup_removal_and_matches_the_real_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source, library = _fixture(tmp_path)
+    # populate the library while keeping the source (copy mode)
+    assert (
+        cli.main(
+            ["--source", str(source), "--library-root", str(library), "--mode", "copy"]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    # move-mode dry run over identical content must expose the planned removal
+    assert (
+        cli.main(["--source", str(source), "--library-root", str(library), "--dry-run"])
+        == 0
+    )
+    planned = json.loads(capsys.readouterr().out)["items"][0]
+    assert planned["disposition"] == "already_handled"
+    assert [action["op"] for action in planned["actions"]] == ["delete"]
+
+    # executing now must produce exactly the planned actions
+    assert cli.main(["--source", str(source), "--library-root", str(library)]) == 0
+    executed = json.loads(capsys.readouterr().out)["items"][0]
+
+    assert executed["actions"] == planned["actions"]
+    release = source / "Movie.Production.2024.1080p-iGor"
+    assert release.exists()
+    assert not (release / "Movie.Production.2024.1080p-iGor.mkv").exists()
+
+
 def test_dry_run_over_already_handled_item_writes_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
