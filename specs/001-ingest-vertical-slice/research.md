@@ -125,9 +125,9 @@ either way.
 ## D7. Diagnostics and logging
 
 **Decision**: No logging framework. A tiny in-repo `stderr` helper writes one
-deterministic line per problem (`error: <cause>` / `warn: <cause>`), with no
-timestamps, no log files, and no levels beyond the existing exit-code and
-`--on-fail` contracts. stdout carries only the run record.
+deterministic line per problem (`error: <cause>`), with no timestamps, no log
+files, and no levels beyond the existing exit-code and `--on-fail`
+contracts. stdout carries only the run record.
 
 **Rationale**: The CLI contract already defines stdout/stderr and exit codes;
 a logging stack would add a dependency and non-deterministic output for no

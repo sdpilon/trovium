@@ -18,15 +18,16 @@ Contract tests pin field names and enums.
 
 ## Item record
 
-| Field         | Type                      | Notes                                                                                                         |
-| ------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`        | string                    | candidate display name (torrent name or entry name)                                                           |
-| `disposition` | enum                      | `ingested` \| `already_handled` \| `not_yet_complete` \| `unresolvable` \| `rejected_out_of_scope` \| `error` |
-| `reason`      | string ∅                  | required for `unresolvable`, `rejected_out_of_scope`, `error`; else nullable                                  |
-| `kind`        | `"movie" \| "tv" \| null` | resolved classification; null when unresolved (FR-002)                                                        |
-| `title`       | string ∅                  | resolved title; null when unresolved                                                                          |
-| `destination` | string ∅                  | resolved/placed library path; null when not applicable                                                        |
-| `actions`     | array ∅                   | inspect-only plans and executed ops: `{op: "move"\|"copy"\|"hardlink", from, to, bytes}`                      |
+| Field            | Type                      | Notes                                                                                                                                             |
+| ---------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`           | string                    | candidate display name (torrent name or entry name)                                                                                               |
+| `disposition`    | enum                      | `ingested` \| `already_handled` \| `not_yet_complete` \| `unresolvable` \| `rejected_out_of_scope` \| `error`                                     |
+| `reason`         | string ∅                  | required for `unresolvable`, `rejected_out_of_scope`, `error`; else nullable                                                                      |
+| `kind`           | `"movie" \| "tv" \| null` | resolved classification; null when unresolved (FR-002)                                                                                            |
+| `title`          | string ∅                  | resolved title; null when unresolved                                                                                                              |
+| `destination`    | string ∅                  | resolved/placed library path; null when not applicable                                                                                            |
+| `actions`        | array ∅                   | inspect-only plans and executed ops: `{op: "move"\|"copy"\|"hardlink", from, to, bytes}`                                                          |
+| `client_actions` | array ∅                   | client-mode only, present when operations were performed: `{op: "setLocation"\|"pause"\|"delete", detail}` — additive; never contains credentials |
 
 ## Invariants
 

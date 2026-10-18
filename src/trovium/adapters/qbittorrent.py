@@ -14,7 +14,7 @@ import httpx
 
 from trovium.sources import ClientState, CompletionState
 
-_REQUIRED_KEYS = ("name", "progress", "state", "save_path")
+_REQUIRED_KEYS = ("hash", "name", "progress", "state", "save_path")
 _COMPLETE_STATES = frozenset(
     {"uploading", "stalledUP", "forcedUP", "pausedUP", "queuedUP", "checkingUP"}
 )
@@ -28,6 +28,7 @@ class AdapterError(RuntimeError):
 class ClientEntry:
     """One torrent as reported by the client, in adapter-neutral terms."""
 
+    hash: str
     name: str
     content_path: Path
     completion: CompletionState
@@ -122,10 +123,13 @@ class QbittorrentClient:
                 raise AdapterError(
                     f"malformed client response: torrent missing '{key}'"
                 )
+        torrent_hash = raw["hash"]
         name = raw["name"]
         progress = raw["progress"]
         state = raw["state"]
         save_path = raw["save_path"]
+        if not isinstance(torrent_hash, str) or not torrent_hash:
+            raise AdapterError("malformed client response: torrent 'hash' is empty")
         if not isinstance(name, str) or not name:
             raise AdapterError("malformed client response: torrent 'name' is empty")
         if not isinstance(progress, (int, float)) or isinstance(progress, bool):
@@ -149,6 +153,7 @@ class QbittorrentClient:
         complete = float(progress) >= 1.0 or state in _COMPLETE_STATES
         category = raw.get("category")
         return ClientEntry(
+            hash=torrent_hash,
             name=name,
             content_path=resolved,
             completion=CompletionState.COMPLETE
@@ -158,19 +163,23 @@ class QbittorrentClient:
             category=category if isinstance(category, str) else None,
         )
 
-    def set_location(self, name: str, location: Path) -> None:
-        """Point the client at the new location after a move placement (FR-010)."""
+    def set_location(self, torrent_hash: str, location: Path) -> None:
+        """Point this torrent at the new location after a move placement (FR-010)."""
         self._post(
-            "/api/v2/torrents/setLocation", {"hashes": "all", "location": str(location)}
+            "/api/v2/torrents/setLocation",
+            {"hashes": torrent_hash, "location": str(location)},
         )
 
-    def pause(self, name: str) -> None:
-        """Pause a torrent (``--post-ingest pause``)."""
-        self._post("/api/v2/torrents/pause", {"hashes": "all"})
+    def pause(self, torrent_hash: str) -> None:
+        """Pause exactly this torrent (``--post-ingest pause``)."""
+        self._post("/api/v2/torrents/pause", {"hashes": torrent_hash})
 
-    def delete(self, name: str) -> None:
-        """Delete a torrent (``--post-ingest delete``); files are left in place."""
-        self._post("/api/v2/torrents/delete", {"hashes": "all", "deleteFiles": "false"})
+    def delete(self, torrent_hash: str) -> None:
+        """Delete exactly this torrent; files are left in place."""
+        self._post(
+            "/api/v2/torrents/delete",
+            {"hashes": torrent_hash, "deleteFiles": "false"},
+        )
 
     def _post(self, url: str, data: dict[str, str]) -> None:
         response = self._request("POST", url, data=data)

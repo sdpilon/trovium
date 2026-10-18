@@ -208,3 +208,37 @@
 - Commit after each task or logical group with Conventional Commits subjects (constitution III)
 - Stop at any checkpoint to validate the story independently
 - Avoid vague tasks and cross-story file conflicts — `cli.py`, `record.py` are shared wires; coordinate edits there sequentially
+
+---
+
+## Phase 8: Convergence
+
+**Purpose**: Close the gaps found by `/speckit.converge` between the implemented
+code and `spec.md` / `plan.md` / `data-model.md`. Ordered by severity.
+
+- [x] T024 Address client operations by torrent hash: add the torrent `hash` to
+      `ClientEntry` and pass `hashes=<hash>` (not `"all"`) for `setLocation`,
+      `pause`, and `delete` in `src/trovium/adapters/qbittorrent.py`, so
+      post-ingest policy and relocation affect only the ingested torrent; add
+      adapter/integration assertions that exactly the target hash is sent per
+      FR-010 and FR-011 (contradicts)
+- [x] T025 Remove the now-redundant source files in `move` mode when the
+      destination already holds identical content, and report the removal in the
+      item's `reason`, per the pinned conflict policy in `data-model.md` Behavior
+      matrix row 2; extend `tests/unit/test_placement.py` accordingly (partial)
+- [x] T026 Refuse an explicitly supplied `--post-ingest` when combined with
+      `--source` even at its default value: make the parser default `None`,
+      resolve `keep` only in client mode, and refuse whenever the option was
+      given, per FR-013 and contracts/cli.md; add a contract test for
+      `--source --post-ingest keep` (contradicts)
+- [x] T027 Record client-facing operations in the run record for ingested
+      client-mode items — `setLocation`, `pause`, and `delete` — so the summary
+      makes client behavior explicit per FR-007, SC-004, and the client-state
+      edge case; keep the record schema backward-compatible (additive field) and
+      cover it in contract tests (missing)
+- [x] T028 Add a client-mode dry-run parity contract test: the `--dry-run`
+      record's `actions` must equal the subsequent real run's `actions`
+      field-for-field, extending SC-005 coverage beyond disk mode (partial)
+- [x] T029 Review the unused `warn()` helper in `src/trovium/record.py`:
+      either remove it or justify its retention in research decision D7
+      (unrequested)

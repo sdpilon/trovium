@@ -39,6 +39,7 @@ class Candidate:
     completion: CompletionState = CompletionState.COMPLETE
     client_state: ClientState = ClientState.NONE
     client_category: str | None = None
+    client_hash: str | None = None
 
 
 def disk_candidates(source_dir: Path) -> tuple[Candidate, ...]:
@@ -56,7 +57,9 @@ def disk_candidates(source_dir: Path) -> tuple[Candidate, ...]:
 
 
 def client_candidates(
-    entries: tuple[tuple[str, Path, CompletionState, ClientState, str | None], ...],
+    entries: tuple[
+        tuple[str, str, Path, CompletionState, ClientState, str | None], ...
+    ],
 ) -> tuple[Candidate, ...]:
     """Adapt adapter-reported entries to candidates (same shape as disk)."""
     return tuple(
@@ -67,6 +70,14 @@ def client_candidates(
             completion=completion,
             client_state=client_state,
             client_category=client_category,
+            client_hash=torrent_hash,
         )
-        for name, content_path, completion, client_state, client_category in entries
+        for (
+            torrent_hash,
+            name,
+            content_path,
+            completion,
+            client_state,
+            client_category,
+        ) in entries
     )
