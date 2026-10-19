@@ -74,10 +74,11 @@ Full contracts live in
 
 > **Client-mode note.** With `--mode move`, the client is pointed at the
 > library folder (`setLocation`). That is safe for single-file torrents only;
-> a multi-file torrent is refused as a per-item error with guidance to use
-> `--mode copy` or `--mode hardlink`, because the flat library layout does not
-> match the client's `<save_path>/<torrent name>/` expectation and moving the
-> files would break seeding.
+> a **folder torrent** (including one holding a single video plus sidecars) is
+> refused as a per-item error with guidance to use `--mode copy` or
+> `--mode hardlink`, because the flat library layout does not match the
+> client's `<save_path>/<torrent name>/` expectation and moving the files would
+> break seeding.
 
 ## Development
 

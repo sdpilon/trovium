@@ -132,27 +132,29 @@ this table):
   never silently replaced. In move mode the now-redundant source file is
   removed to complete the move-equivalent, and this is reported — except
   when the source _is_ the destination file (same inode), which is a pure
-  no-op: nothing is removed and no `delete` action is planned.
+  no-op: nothing is removed and no `delete` action is planned. Leaving a
+  hardlinked source in place is deliberate: that link may be the path the
+  client seeds from.
 - Destination exists with the same canonical name but DIFFERENT content: the
   step never overwrites and never auto-renames; the disposition is `error`,
   naming the collision path. The spec Edge Case wording's "replaces it
   deliberately" is always a caller-opt-in decision taken in a later step —
   never the default behavior of this step.
 - Client seeding layout (pinned decision): client-mode `move` is safe for
-  single-file torrents only. For multi-file torrents the flat library layout
-  does not match the client's `<save_path>/<torrent name>/` expectation, so a
-  multi-file candidate in client `move` mode is refused with a per-item
+  single-file torrents only. A **folder torrent** (content path is a
+  directory) does not match the client's `<save_path>/<torrent name>/`
+  expectation under the flat library layout, so it is refused with a per-item
   `error` recommending `--mode copy` or `--mode hardlink`; nothing is placed
-  and the client is not mutated. This prevents the live-verified
-  re-download/duplicate loop.
+  and the client is not mutated. The refusal runs after classification and
+  scope. This prevents the live-verified re-download/duplicate loop.
 
-| #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                          |
-| --- | -------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | move           | same volume  | none                                   | relocate (rename); disposition ingested                                                                                         |
-| 2   | move           | same volume  | identical content                      | verified no-op (extra relocation is net-zero); disposition `already_handled`; now-redundant source removed and removal reported |
-| 3   | move           | same volume  | same canonical name, different content | do not overwrite (Edge Cases); disposition `error` naming the conflict                                                          |
-| 4   | move           | cross volume | none                                   | copy + delete source; seed-safety warning in record                                                                             |
-| 5   | copy/hardlink  | —            | none                                   | original stays; disposition ingested                                                                                            |
-| 6   | copy/hardlink  | —            | identical content                      | original stays; disposition already_handled (no duplicate created)                                                              |
-| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003); action records `op: "copy"` with a `note` naming the fallback                          |
-| 8   | copy/hardlink  | —            | name clash, different content          | do not overwrite; disposition `error`                                                                                           |
+| #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                                                                                         |
+| --- | -------------- | ------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | move           | same volume  | none                                   | relocate (rename); disposition ingested                                                                                                                                                        |
+| 2   | move           | same volume  | identical content                      | verified no-op (extra relocation is net-zero); disposition `already_handled`; now-redundant source removed and removal reported, unless the source is the destination file or a hardlink to it |
+| 3   | move           | same volume  | same canonical name, different content | do not overwrite (Edge Cases); disposition `error` naming the conflict                                                                                                                         |
+| 4   | move           | cross volume | none                                   | copy + delete source; seed-safety warning in record                                                                                                                                            |
+| 5   | copy/hardlink  | —            | none                                   | original stays; disposition ingested                                                                                                                                                           |
+| 6   | copy/hardlink  | —            | identical content                      | original stays; disposition already_handled (no duplicate created)                                                                                                                             |
+| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003); action records `op: "copy"` with a `note` naming the fallback                                                                                         |
+| 8   | copy/hardlink  | —            | name clash, different content          | do not overwrite; disposition `error`                                                                                                                                                          |

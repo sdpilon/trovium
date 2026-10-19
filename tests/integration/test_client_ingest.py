@@ -87,7 +87,13 @@ def test_completed_torrent_is_ingested_and_client_updated(
             return httpx.Response(200, text="Ok.")
         if request.url.path == "/api/v2/torrents/info":
             return httpx.Response(
-                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+                200,
+                json=[
+                    _torrent(
+                        "Movie.Production.2024.1080p-iGor",
+                        content / "Movie.Production.2024.1080p-iGor.mkv",
+                    )
+                ],
             )
         return httpx.Response(200, text="Ok.")
 
@@ -266,7 +272,13 @@ def test_post_ingest_pause_and_delete_are_applied_after_success(
             return httpx.Response(200, text="Ok.")
         if request.url.path == "/api/v2/torrents/info":
             return httpx.Response(
-                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+                200,
+                json=[
+                    _torrent(
+                        "Movie.Production.2024.1080p-iGor",
+                        content / "Movie.Production.2024.1080p-iGor.mkv",
+                    )
+                ],
             )
         return httpx.Response(200, text="Ok.")
 
@@ -303,7 +315,13 @@ def test_client_failure_after_placement_is_reported_as_item_error(
             return httpx.Response(500, text="boom")
         if request.url.path == "/api/v2/torrents/info":
             return httpx.Response(
-                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+                200,
+                json=[
+                    _torrent(
+                        "Movie.Production.2024.1080p-iGor",
+                        content / "Movie.Production.2024.1080p-iGor.mkv",
+                    )
+                ],
             )
         return httpx.Response(200, text="Ok.")
 
@@ -341,7 +359,13 @@ def test_dry_run_in_client_mode_does_not_call_the_client(
         calls.append(request.url.path)
         if request.url.path == "/api/v2/torrents/info":
             return httpx.Response(
-                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+                200,
+                json=[
+                    _torrent(
+                        "Movie.Production.2024.1080p-iGor",
+                        content / "Movie.Production.2024.1080p-iGor.mkv",
+                    )
+                ],
             )
         return httpx.Response(200, text="Ok.")
 
@@ -469,6 +493,111 @@ def test_multi_file_torrent_ingests_with_copy_mode(
     assert len(list(library.rglob("*.mkv"))) == 2
 
 
+def test_folder_torrent_with_one_media_file_is_refused_in_move_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a folder torrent can hold one video plus .nfo/.srt; media-file count alone
+    # does not make it single-file from the client's point of view
+    content = tmp_path / "downloads" / "Folder.Film.2024.1080p"
+    content.mkdir(parents=True)
+    (content / "Folder.Film.2024.1080p.mkv").write_bytes(b"movie")
+    (content / "Folder.Film.2024.1080p.nfo").write_text("metadata")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport([_torrent("Folder.Film.2024.1080p", content)])
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, record, _ = _run(library)
+
+    assert code == 0
+    item = record["items"][0]
+    assert item["disposition"] == "error"
+    assert "--mode copy or --mode hardlink" in item["reason"]
+    assert list(library.rglob("*.mkv")) == []
+    assert content.exists()
+
+
+def test_scoped_out_folder_torrent_is_not_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the move refusal must come after scope: a TV pack in a movie-scoped run is
+    # out of scope, not an error
+    content = tmp_path / "downloads" / "Show.Name.S02"
+    content.mkdir(parents=True)
+    (content / "Show.Name.S02E01.mkv").write_bytes(b"a")
+    (content / "Show.Name.S02E02.mkv").write_bytes(b"b")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport([_torrent("Show.Name.S02", content)])
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, record, _ = _run(library, "--category", "movie")
+
+    assert code == 0
+    item = record["items"][0]
+    assert item["disposition"] == "rejected_out_of_scope"
+    assert "outside the declared category scope (movie)" in item["reason"]
+
+
+def test_dry_run_plans_setlocation_for_already_handled_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Movie.Production.2024.1080p-iGor"
+    content.mkdir(parents=True)
+    media = content / "Movie.Production.2024.1080p-iGor.mkv"
+    media.write_bytes(b"movie-bytes")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport([_torrent("Movie.Production.2024.1080p-iGor", media)])
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, first, _ = _run(library, "--mode", "copy")
+    assert code == 0
+    assert first["items"][0]["disposition"] == "ingested"
+
+    code, planned, _ = _run(library, "--dry-run")
+    code, executed, _ = _run(library)
+
+    planned_item = planned["items"][0]
+    executed_item = executed["items"][0]
+    assert planned_item["disposition"] == "already_handled"
+    assert [action["op"] for action in planned_item["actions"]] == ["delete"]
+    planned_ops = [action["op"] for action in planned_item["client_actions"]]
+    executed_ops = [action["op"] for action in executed_item["client_actions"]]
+    assert planned_ops == executed_ops == ["setLocation"]
+    planned_detail = planned_item["client_actions"][0]["detail"]
+    executed_detail = executed_item["client_actions"][0]["detail"]
+    assert planned_detail == f"planned: {executed_detail}"
+    assert not media.exists()
+
+
 def test_client_mode_dry_run_plan_matches_the_real_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -481,7 +610,13 @@ def test_client_mode_dry_run_plan_matches_the_real_run(
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v2/torrents/info":
             return httpx.Response(
-                200, json=[_torrent("Movie.Production.2024.1080p-iGor", content)]
+                200,
+                json=[
+                    _torrent(
+                        "Movie.Production.2024.1080p-iGor",
+                        content / "Movie.Production.2024.1080p-iGor.mkv",
+                    )
+                ],
             )
         return httpx.Response(200, text="Ok.")
 

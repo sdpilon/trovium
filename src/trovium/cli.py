@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from trovium.adapters.qbittorrent import AdapterError
@@ -148,6 +148,7 @@ def process(
     library_root: Path,
     declared: Declared,
     dry_run: bool,
+    guard: Callable[[Candidate, Classification], str | None] | None = None,
 ) -> ItemRecord:
     """Classify and (unless dry-run) place one candidate.
 
@@ -191,6 +192,17 @@ def process(
             kind=classification.kind.value,
             title=classification.title,
         )
+    if guard is not None:
+        refusal = guard(candidate, classification)
+        if refusal is not None:
+            return ItemRecord(
+                name=candidate.name,
+                source=candidate.source,
+                disposition=Disposition.ERROR,
+                reason=refusal,
+                kind=classification.kind.value,
+                title=classification.title,
+            )
 
     destination = resolve_destination(classification, library_root)
     existing = compare_existing(destination, candidate.files)
@@ -230,6 +242,8 @@ def _planned_client_actions(
     declared: Declared,
     torrent_hash: str,
     destination: str | None,
+    *,
+    include_policy: bool = True,
 ) -> list[ClientAction]:
     """The client operations a real run would perform for this item (FR-006)."""
     planned: list[ClientAction] = []
@@ -240,6 +254,8 @@ def _planned_client_actions(
                 detail=f"planned: hashes={torrent_hash} location={destination}",
             )
         )
+    if not include_policy:
+        return planned
     if declared.post_ingest is PostIngest.PAUSE:
         planned.append(
             ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
@@ -256,6 +272,23 @@ MULTI_FILE_MOVE_REASON = (
     "its files under <save_path>/<torrent name>/, which the flat library layout "
     "does not provide; use --mode copy or --mode hardlink to keep seeding"
 )
+
+
+def _client_move_guard(
+    declared: Declared,
+) -> Callable[[Candidate, Classification], str | None]:
+    """Refuse client move for folder torrents after scope/classification."""
+
+    def guard(candidate: Candidate, _classification: Classification) -> str | None:
+        if (
+            declared.mode is Mode.MOVE
+            and candidate.root is not None
+            and candidate.root.is_dir()
+        ):
+            return MULTI_FILE_MOVE_REASON
+        return None
+
+    return guard
 
 
 def run_client(
@@ -294,31 +327,29 @@ def run_client(
             )
             continue
 
-        if declared.mode is Mode.MOVE and len(candidate.files) > 1:
-            summary.items.append(
-                ItemRecord(
-                    name=candidate.name,
-                    source=Source.CLIENT,
-                    disposition=Disposition.ERROR,
-                    reason=MULTI_FILE_MOVE_REASON,
-                )
-            )
-            if declared.on_fail is OnFail.STOP:
-                break
-            continue
-
-        record = process(candidate, library_root, declared, dry_run)
+        record = process(
+            candidate,
+            library_root,
+            declared,
+            dry_run,
+            guard=_client_move_guard(declared),
+        )
         torrent_hash = candidate.client_hash
         assert torrent_hash is not None  # client candidates always carry hash
-
-        if dry_run and record.disposition is Disposition.INGESTED:
-            record.client_actions.extend(
-                _planned_client_actions(declared, torrent_hash, record.destination)
-            )
 
         removed_sources = record.disposition is Disposition.ALREADY_HANDLED and any(
             action.op is ActionKind.DELETE for action in record.actions
         )
+        if dry_run and (record.disposition is Disposition.INGESTED or removed_sources):
+            record.client_actions.extend(
+                _planned_client_actions(
+                    declared,
+                    torrent_hash,
+                    record.destination,
+                    include_policy=record.disposition is Disposition.INGESTED,
+                )
+            )
+
         if not dry_run and (
             record.disposition is Disposition.INGESTED or removed_sources
         ):

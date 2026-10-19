@@ -72,6 +72,9 @@ def test_cross_filesystem_hardlink_behaves_as_copy(
 
     monkeypatch.setattr("trovium.placement._same_filesystem", lambda *_: False)
     plan = plan_placement(Mode.HARDLINK, (source,), destination, _no_conflict())
+    # the plan predicts the fallback, so dry-run and real run agree (SC-005)
+    assert plan.actions[0].op is ActionKind.COPY
+    assert plan.actions[0].note is not None
     outcome = apply_placement(Mode.HARDLINK, (source,), plan)
 
     placed = destination / "movie.mkv"
@@ -189,6 +192,27 @@ def test_already_handled_never_unlinks_the_placed_file_itself(
     assert outcome.actions == ()
     assert placed.read_bytes() == b"payload"
     assert outcome.reason == "identical content already in the library"
+
+
+def test_hardlinked_source_is_left_in_place(tmp_path: Path) -> None:
+    # a hardlinked source is the same inode as the destination; removing that
+    # link could break the path a client seeds from, so the no-op is deliberate
+    destination = tmp_path / "lib" / "Movie"
+    destination.mkdir(parents=True)
+    placed = destination / "movie.mkv"
+    placed.write_bytes(b"payload")
+    source = tmp_path / "movie.mkv"
+    os.link(placed, source)
+    assert os.path.samefile(source, placed)
+
+    plan = plan_placement(
+        Mode.MOVE, (source,), destination, ExistingItem(sameness=Sameness.IDENTICAL)
+    )
+    outcome = apply_placement(Mode.MOVE, (source,), plan)
+
+    assert outcome.actions == ()
+    assert source.exists()
+    assert placed.exists()
 
 
 def test_same_name_different_content_is_error_never_overwrite(tmp_path: Path) -> None:
