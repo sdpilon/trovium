@@ -29,8 +29,8 @@ this directory (`work/` unless `$QBT_RIG_WORK` says otherwise).
   distributions install `qbittorrent-nox` yourself and point `QBT_RIG_CLIENT` at
   the tree containing `usr/bin/qbittorrent-nox`.
 - Python 3.13 (the rig itself is stdlib only).
-- Free local ports: 8080, 8081, 6969, 46052, 6882, 6883 (overridable, see
-  Configuration).
+- Free local ports: 22150, 8080, 8081, 6969, 46052, 6882, 6883 (overridable,
+  see Configuration).
 
 ## Quick start
 
@@ -54,8 +54,10 @@ uv run trovium-ingest --library-root "$QBT_RIG_LIBRARY" --json pretty
 ./qbt_rig.py down
 ```
 
-`fetch` verifies sha256 against the fixture manifest, so a successful run proves
-the payload travelled over the peer protocol rather than being placed locally.
+`fetch` verifies sha256 against the fixture manifest **and** requires the torrent
+to have downloaded peer bytes, so a successful run proves the payload travelled
+over the peer protocol rather than being satisfied from files already on disk.
+Run `reset` before re-fetching a case.
 
 ## Commands
 

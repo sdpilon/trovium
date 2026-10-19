@@ -10,7 +10,19 @@ set -euo pipefail
 
 RIG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT="${QBT_RIG_CLIENT:-$RIG/client}"
-LIB="$CLIENT/usr/lib/x86_64-linux-gnu"
+
+lib_dir() {
+  for dir in "$CLIENT"/usr/lib/*-linux-gnu; do
+    if [ -d "$dir" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+  done
+  # Nothing extracted yet: a conventional default for the early version check.
+  printf '%s\n' "$CLIENT/usr/lib/x86_64-linux-gnu"
+}
+
+LIB="$(lib_dir)"
 
 if [ -x "$CLIENT/usr/bin/qbittorrent-nox" ]; then
   echo "client already present: $(LD_LIBRARY_PATH="$LIB:$LIB/libproxy" "$CLIENT/usr/bin/qbittorrent-nox" --version 2>/dev/null || echo 'version unknown')"
@@ -40,7 +52,8 @@ for deb in *.deb; do
   dpkg -x "$deb" "$CLIENT"
 done
 
-missing="$(LD_LIBRARY_PATH="$CLIENT/usr/lib/x86_64-linux-gnu:$CLIENT/usr/lib/x86_64-linux-gnu/libproxy" \
+LIB="$(lib_dir)"
+missing="$(LD_LIBRARY_PATH="$LIB:$LIB/libproxy" \
   ldd "$CLIENT/usr/bin/qbittorrent-nox" | awk '/not found/{print $1}')"
 if [ -n "$missing" ]; then
   echo "still missing libraries:" >&2

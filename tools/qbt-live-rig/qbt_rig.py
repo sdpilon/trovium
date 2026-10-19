@@ -30,6 +30,7 @@ import http.cookiejar
 import json
 import os
 import random
+import shlex
 import shutil
 import signal
 import socket
@@ -53,6 +54,13 @@ PIECE = 256 * 1024
 
 def _port(env: str, default: int) -> int:
     return int(os.environ.get(env, default))
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return number
 
 
 INSTANCES: dict[str, dict[str, int]] = {
@@ -161,7 +169,9 @@ WebUI\\Password_PBKDF2="@ByteArray({_pbkdf2(PASSWORD)})"
 
 
 def client_env() -> dict[str, str]:
-    lib = CLIENT / "usr/lib/x86_64-linux-gnu"
+    """Environment with the extracted client's libs, on any APT multiarch."""
+    candidates = sorted((CLIENT / "usr/lib").glob("*-linux-gnu"))
+    lib = candidates[0] if candidates else CLIENT / "usr/lib/x86_64-linux-gnu"
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = f"{lib}:{lib / 'libproxy'}"
     env["QT_PLUGIN_PATH"] = str(lib / "qt6/plugins")
@@ -424,6 +434,13 @@ def _tracker_ready(timeout: float = 10.0) -> bool:
     return False
 
 
+def _read_pid(path: Path) -> int | None:
+    try:
+        return int(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def cmd_up(args: argparse.Namespace) -> int:
     binary = CLIENT / "usr/bin/qbittorrent-nox"
     if not binary.exists():
@@ -434,7 +451,8 @@ def cmd_up(args: argparse.Namespace) -> int:
     (WORK / "library").mkdir(exist_ok=True)
 
     tracker_pid = WORK / "tracker.pid"
-    if tracker_pid.exists() and _alive(int(tracker_pid.read_text())):
+    tracker_handle = _read_pid(tracker_pid)
+    if tracker_handle is not None and _alive_rig(tracker_handle, "tracker.py"):
         print(f"tracker already running (pid {tracker_pid.read_text().strip()})")
     else:
         if not _port_free(TRACKER_PORT):
@@ -462,7 +480,8 @@ def cmd_up(args: argparse.Namespace) -> int:
 
     for name in ("a", "b"):
         pid_file = instance_dir(name) / "client.pid"
-        if pid_file.exists() and _alive(int(pid_file.read_text())):
+        running_pid = _read_pid(pid_file)
+        if running_pid is not None and _alive_rig(running_pid, "qbittorrent"):
             print(
                 f"instance {name} already running (pid {pid_file.read_text().strip()})"
             )
@@ -502,25 +521,81 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def _cmdline(pid: int) -> str:
+    """Best-effort process command line; empty when it cannot be determined."""
+    try:
+        raw = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+        return raw.replace(b"\0", b" ").decode(errors="replace").strip()
+    except OSError:
+        pass
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    return result.stdout.strip()
+
+
+def _alive_rig(pid: int, marker: str) -> bool:
+    """True when the pid is alive and plausibly the process we started."""
+    if not _alive(pid):
+        return False
+    cmdline = _cmdline(pid)
+    return not cmdline or marker in cmdline
+
+
 def cmd_down(args: argparse.Namespace) -> int:
-    for pid_file in [
-        WORK / "tracker.pid",
-        *(instance_dir(n) / "client.pid" for n in ("a", "b")),
-    ]:
+    targets = [
+        (WORK / "tracker.pid", "tracker", "tracker.py"),
+        (instance_dir("a") / "client.pid", "instance a", "qbittorrent"),
+        (instance_dir("b") / "client.pid", "instance b", "qbittorrent"),
+    ]
+    failures = 0
+    for pid_file, label, marker in targets:
         if not pid_file.exists():
             continue
-        pid = int(pid_file.read_text())
+        try:
+            pid = int(pid_file.read_text())
+        except ValueError:
+            pid_file.unlink(missing_ok=True)
+            print(f"{label}: unreadable pid file removed", file=sys.stderr)
+            continue
+        if not _alive(pid):
+            pid_file.unlink(missing_ok=True)
+            print(f"{label}: not running (stale pid file removed)")
+            continue
+        if not _alive_rig(pid, marker):
+            pid_file.unlink(missing_ok=True)
+            print(
+                f"{label}: pid {pid} is not a {marker} process; left it alone and "
+                "removed the stale pid file",
+                file=sys.stderr,
+            )
+            continue
         try:
             os.kill(pid, signal.SIGTERM)
-            for _ in range(20):
-                if not _alive(pid):
-                    break
-                time.sleep(0.25)
         except ProcessLookupError:
-            pass
-        pid_file.unlink(missing_ok=True)
-        print(f"stopped {pid_file.stem} (pid {pid})")
-    return 0
+            pid_file.unlink(missing_ok=True)
+            print(f"{label}: exited before the signal was sent")
+            continue
+        for _ in range(20):
+            if not _alive(pid):
+                break
+            time.sleep(0.25)
+        if _alive(pid):
+            failures += 1
+            print(
+                f"{label}: still running after 5s (pid {pid}); pid file kept",
+                file=sys.stderr,
+            )
+        else:
+            pid_file.unlink(missing_ok=True)
+            print(f"{label}: stopped (pid {pid})")
+    return 1 if failures else 0
 
 
 def cmd_fixture(args: argparse.Namespace) -> int:
@@ -682,9 +757,18 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     client.add(Path(manifest["torrent"]), downloads("a"), stopped=False)
     client.wait_registered(str(manifest["info_hash"]))
     state = client.wait_complete(str(manifest["info_hash"]))
+    downloaded = state.get("downloaded")
+    if not isinstance(downloaded, (int, float)) or downloaded <= 0:
+        print(
+            f"{args.name}: no peer data was downloaded (the torrent completed from "
+            "existing files); run reset and fetch again to prove a transfer",
+            file=sys.stderr,
+        )
+        return 1
     print(
         f"downloaded {args.name} on a: state={state['state']} "
-        f"progress={state['progress']} save_path={state['save_path']}"
+        f"progress={state['progress']} bytes={downloaded} "
+        f"save_path={state['save_path']}"
     )
     if not _verify(args.name, downloads("a")):
         print("payload mismatch after transfer", file=sys.stderr)
@@ -756,11 +840,15 @@ def cmd_reset(args: argparse.Namespace) -> int:
 
 def cmd_env(args: argparse.Namespace) -> int:
     port = INSTANCES[args.instance]["webui"]
-    print(f"export TROVIUM_CLIENT_URL=http://127.0.0.1:{port}")
-    print("export TROVIUM_CLIENT_USERNAME=admin")
-    print(f"export TROVIUM_CLIENT_PASSWORD={PASSWORD}")
-    print(f"export QBT_RIG_LIBRARY={WORK / 'library'}")
-    print(f"export QBT_RIG_FIXTURES={WORK / 'fixtures'}")
+    exports = {
+        "TROVIUM_CLIENT_URL": f"http://127.0.0.1:{port}",
+        "TROVIUM_CLIENT_USERNAME": "admin",
+        "TROVIUM_CLIENT_PASSWORD": PASSWORD,
+        "QBT_RIG_LIBRARY": str(WORK / "library"),
+        "QBT_RIG_FIXTURES": str(WORK / "fixtures"),
+    }
+    for key, value in exports.items():
+        print(f"export {key}={shlex.quote(value)}")
     return 0
 
 
@@ -777,8 +865,12 @@ def main(argv: list[str] | None = None) -> int:
     fixture.add_argument("name", help="case name (manifest id)")
     fixture.add_argument("--title", help="single-file torrent name / file name")
     fixture.add_argument("--root", help="multi-file torrent root folder")
-    fixture.add_argument("--files", type=int, default=1, help="number of media files")
-    fixture.add_argument("--size-mb", type=int, default=2, help="size per file")
+    fixture.add_argument(
+        "--files", type=_positive_int, default=1, help="number of media files"
+    )
+    fixture.add_argument(
+        "--size-mb", type=_positive_int, default=2, help="size per file (>= 1)"
+    )
     fixture.add_argument("--seed", type=int, help="deterministic payload seed")
     fixture.add_argument("--tracker", default=TRACKER_URL)
 
