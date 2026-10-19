@@ -402,7 +402,45 @@ def test_client_candidate_with_invisible_content_is_a_named_error(
     assert str(missing) in item["reason"]
 
 
-def test_multi_file_torrent_move_records_the_seeding_layout_note(
+def test_multi_file_torrent_with_move_is_refused_with_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Show.Name.S01"
+    content.mkdir(parents=True)
+    (content / "Show.Name.S01E01.mkv").write_bytes(b"a")
+    (content / "Show.Name.S01E02.mkv").write_bytes(b"b")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    calls: list[str] = []
+    transport = _transport([_torrent("Show.Name.S01", content)])
+    import trovium.cli as cli_module
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return transport.handle_request(request)
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=httpx.MockTransport(handler)
+        ),
+    )
+
+    code, record, _ = _run(library)
+
+    assert code == 0
+    item = record["items"][0]
+    assert item["disposition"] == "error"
+    assert "--mode copy or --mode hardlink" in item["reason"]
+    # nothing placed, no client mutation
+    assert not list(library.rglob("*.mkv"))
+    assert content.exists()
+    assert "/api/v2/torrents/setLocation" not in calls
+
+
+def test_multi_file_torrent_ingests_with_copy_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     content = tmp_path / "downloads" / "Show.Name.S01"
@@ -423,14 +461,12 @@ def test_multi_file_torrent_move_records_the_seeding_layout_note(
         ),
     )
 
-    code, record, _ = _run(library)
+    code, record, _ = _run(library, "--mode", "copy")
 
     assert code == 0
-    item = record["items"][0]
-    assert item["disposition"] == "ingested"
-    detail = item["client_actions"][0]["detail"]
-    assert "prefer --mode copy" in detail
-    assert "multi-file torrent" in detail
+    assert record["items"][0]["disposition"] == "ingested"
+    assert content.exists()
+    assert len(list(library.rglob("*.mkv"))) == 2
 
 
 def test_client_mode_dry_run_plan_matches_the_real_run(

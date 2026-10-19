@@ -73,11 +73,11 @@ Full contracts live in
 [`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/).
 
 > **Client-mode note.** With `--mode move`, the client is pointed at the
-> library folder (`setLocation`). That is safe for single-file torrents; for
-> multi-file torrents the flat library layout does not match the client's
-> `<location>/<torrent name>/` expectation, so seeding from the library is not
-> preserved — use `--mode copy` or `--mode hardlink` for those. The run record
-> notes this on the affected item.
+> library folder (`setLocation`). That is safe for single-file torrents only;
+> a multi-file torrent is refused as a per-item error with guidance to use
+> `--mode copy` or `--mode hardlink`, because the flat library layout does not
+> match the client's `<save_path>/<torrent name>/` expectation and moving the
+> files would break seeding.
 
 ## Development
 

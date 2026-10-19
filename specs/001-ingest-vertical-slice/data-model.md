@@ -138,12 +138,13 @@ this table):
   naming the collision path. The spec Edge Case wording's "replaces it
   deliberately" is always a caller-opt-in decision taken in a later step —
   never the default behavior of this step.
-- Client seeding layout (decided scope boundary): move-mode `setLocation` is
-  safe for single-file torrents. Multi-file torrents keep a flat library
-  layout, which does not match the client's `<location>/<torrent name>/`
-  expectation; seeding from the library is therefore not preserved for them.
-  Use `--mode copy` or `--mode hardlink` for multi-file torrents; the
-  placement's `client_actions[].detail` states this when it applies.
+- Client seeding layout (pinned decision): client-mode `move` is safe for
+  single-file torrents only. For multi-file torrents the flat library layout
+  does not match the client's `<save_path>/<torrent name>/` expectation, so a
+  multi-file candidate in client `move` mode is refused with a per-item
+  `error` recommending `--mode copy` or `--mode hardlink`; nothing is placed
+  and the client is not mutated. This prevents the live-verified
+  re-download/duplicate loop.
 
 | #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                          |
 | --- | -------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
