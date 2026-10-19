@@ -75,9 +75,10 @@ command line and never emitted into the run record (constitution I, FR-012).
   out-of-scope and unresolvable candidates are reported normally.
 - With `--mode move --post-ingest pause`, the pause is issued **before**
   `setLocation`: qBittorrent's relocation is asynchronous, and stopping after
-  it starts can leave the torrent at `stoppedDL`, progress 0. Pausing first
-  keeps the torrent complete and paused; the record lists `pause` before
-  `setLocation`.
+  it starts can leave the torrent at `stoppedDL`, progress 0. After the
+  relocation, the step requests `torrents/recheck` and waits (bounded) for the
+  torrent to report complete again, so the paused state is coherent. The
+  record lists `pause`, `setLocation`, then `recheck`.
 - A **read failure on source files during placement** (e.g. permission denied
   on a candidate's file) is a per-item failure, not a run-level one: the item's
   disposition is `error` with the named cause, governed by

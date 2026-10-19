@@ -282,6 +282,10 @@ def _planned_client_actions(
         planned.append(
             ClientAction(op="delete", detail=f"planned: hashes={torrent_hash}")
         )
+    if pause_first:
+        planned.append(
+            ClientAction(op="recheck", detail=f"planned: hashes={torrent_hash}")
+        )
     return planned
 
 
@@ -394,6 +398,12 @@ def run_client(
                             ),
                         )
                     )
+                if pause_first:
+                    client.recheck(torrent_hash)
+                    record.client_actions.append(
+                        ClientAction(op="recheck", detail=f"hashes={torrent_hash}")
+                    )
+                    client.wait_until_complete(torrent_hash)
                 if record.disposition is Disposition.INGESTED:
                     if declared.post_ingest is PostIngest.PAUSE and not pause_first:
                         client.pause(torrent_hash)

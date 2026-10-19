@@ -44,7 +44,10 @@ username + password from environment variables or `--client-url` (URL) and env
 Torrent shape uses `root_path` (falling back to `content_path` when the client
 omits it): `content_path` is the _file_ for a one-file folder torrent, so it
 cannot distinguish torrent shapes. For `--post-ingest pause` with `move`, the
-pause is issued before `setLocation` because the relocation is asynchronous.
+pause is issued before `setLocation` because the relocation is asynchronous;
+after relocation the adapter issues `torrents/recheck` and polls
+`torrents/info` (bounded) until progress returns to complete, so a paused
+torrent does not report 0%.
 
 **Rationale**: WebUI API v2 is qBittorrent's stable, documented interface and
 the standard integration surface; every capability this spec needs exists in
