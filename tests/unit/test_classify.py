@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from trovium.classify import Kind, classify
+import pytest
+
+from trovium.classify import VIDEO_EXTENSIONS, Kind, _tokens, classify
 
 
 def test_movie_with_year_and_quality() -> None:
@@ -53,3 +55,9 @@ def test_movie_without_quality_marker() -> None:
     assert result.kind is Kind.MOVIE
     assert result.title == "Some Film"
     assert result.year == 1999
+
+
+@pytest.mark.parametrize("extension", sorted(VIDEO_EXTENSIONS))
+def test_tokens_strip_every_known_video_extension(extension: str) -> None:
+    # one source of truth: VIDEO_EXTENSIONS, not a partial hardcoded list
+    assert _tokens(f"Release.Name{extension}") == ["Release", "Name"]
