@@ -171,8 +171,24 @@ class QbittorrentClient:
         )
 
     def pause(self, torrent_hash: str) -> None:
-        """Pause exactly this torrent (``--post-ingest pause``)."""
-        self._post("/api/v2/torrents/pause", {"hashes": torrent_hash})
+        """Pause exactly this torrent (``--post-ingest pause``).
+
+        qBittorrent 5.x renamed the endpoint: ``/torrents/stop`` exists and
+        ``/torrents/pause`` answers 404. 4.x is the reverse. Try ``stop`` first
+        and fall back to ``pause`` on 404 so both are supported.
+        """
+        for endpoint in ("/api/v2/torrents/stop", "/api/v2/torrents/pause"):
+            response = self._request("POST", endpoint, data={"hashes": torrent_hash})
+            if response.status_code == httpx.codes.OK:
+                return
+            if response.status_code != httpx.codes.NOT_FOUND:
+                raise AdapterError(
+                    f"client returned HTTP {response.status_code} for {endpoint}"
+                )
+        raise AdapterError(
+            "client does not support pausing torrents (tried /torrents/stop "
+            "and /torrents/pause)"
+        )
 
     def delete(self, torrent_hash: str) -> None:
         """Delete exactly this torrent; files are left in place."""
