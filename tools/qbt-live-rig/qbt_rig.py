@@ -762,19 +762,18 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     state = client.wait_complete(str(manifest["info_hash"]))
     payload_bytes = sum(record["bytes"] for record in manifest["files"])
     # qBittorrent can report progress 1.0 in the same poll where `downloaded`
-    # is still 0, so settle briefly before deciding no peer data moved.
+    # is still 0, so settle briefly. The session delta is the criterion: the
+    # per-torrent counter can be non-zero from an earlier fetch without reset.
     deadline = time.monotonic() + 5.0
     while True:
-        downloaded = state.get("downloaded")
         transferred = _as_int(client.transfer().get("dl_info_data", 0)) - before_bytes
-        if (
-            isinstance(downloaded, (int, float)) and downloaded > 0
-        ) or transferred >= payload_bytes:
+        if transferred >= payload_bytes:
             break
         if time.monotonic() >= deadline:
             print(
-                f"{args.name}: no peer data was downloaded (the torrent completed "
-                "from existing files); run reset and fetch again to prove a transfer",
+                f"{args.name}: no peer data was downloaded this session "
+                f"({transferred}/{payload_bytes} bytes); run reset and fetch "
+                "again to prove a transfer",
                 file=sys.stderr,
             )
             return 1

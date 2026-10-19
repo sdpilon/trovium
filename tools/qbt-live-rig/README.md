@@ -54,10 +54,10 @@ uv run trovium-ingest --library-root "$QBT_RIG_LIBRARY" --json pretty
 ./qbt_rig.py down
 ```
 
-`fetch` verifies sha256 against the fixture manifest **and** requires the torrent
-to have downloaded peer bytes, so a successful run proves the payload travelled
-over the peer protocol rather than being satisfied from files already on disk.
-Run `reset` before re-fetching a case.
+`fetch` verifies sha256 against the fixture manifest **and** requires the
+session's download counter to cover the payload, so a successful run proves the
+payload travelled over the peer protocol rather than being satisfied from files
+already on disk. Run `reset` before re-fetching a case.
 
 ## Commands
 
