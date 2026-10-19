@@ -101,6 +101,14 @@ uv run mypy .
 uv run pytest
 ```
 
+### Live client testing
+
+`tests/` uses stubbed HTTP transports, so it cannot observe what qBittorrent
+does with the files afterwards. [`tools/qbt-live-rig/`](tools/qbt-live-rig/)
+runs two local qBittorrent instances plus a tracker and hands the CLI a real
+directory of peer-downloaded files; no root or external services are needed.
+See its [README](tools/qbt-live-rig/README.md) for the quick start.
+
 ## License
 
 AGPL-3.0-only. See [LICENSE](LICENSE).
