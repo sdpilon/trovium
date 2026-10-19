@@ -43,6 +43,8 @@ command. Never declare work finished with it red (XXII).
   first, not the pyproject alone.
 - **Do not weaken gates**: setting `GATES_SKIP=…` on a command raises an
   approval prompt; `--no-verify` is flagged by the hook chain itself.
+- **PR titles/descriptions must not contain emoji** — the message rules
+  reject them and the `gates` check fails as a whole.
 - **Spec gate parsing**: an in-development spec's numbered criteria are parsed
   and executed as acceptance checks; a merged/Draft spec is informational, but
   a mismatched tasks/spec state can still fail CI parity.
@@ -54,19 +56,6 @@ command. Never declare work finished with it red (XXII).
   regenerate them through the tool, never by patching files.
 - `.opencode/plugins/gates/`, `.opencode/skills/`, and `tools/` are
   hand-written and in scope for linting.
-
-## Machine quirks
-
-- `/opt/homebrew/bin/task` is **Taskwarrior**, not go-task: gates' `task`
-  orchestrator cannot be used here. `scripts/check.sh` (custom orchestrator)
-  exists precisely for that. If you must run a Taskfile, use
-  `uvx --from go-task-bin task …`.
-- PR **descriptions and titles must not contain emoji** — the message rules
-  reject them and the `gates` check fails (seen on real PRs).
-- A `git push` can complete without GitHub creating the workflow run (webhook
-  lag). After pushing, confirm a run exists for the pushed SHA
-  (`gh api repos/sdpilon/trovium/actions/runs?head_sha=$SHA`) before waiting
-  for CI.
 
 ## Testing notes
 
