@@ -141,12 +141,18 @@ this table):
   deliberately" is always a caller-opt-in decision taken in a later step —
   never the default behavior of this step.
 - Client seeding layout (pinned decision): client-mode `move` is safe for
-  single-file torrents only. A **folder torrent** (content path is a
-  directory) does not match the client's `<save_path>/<torrent name>/`
-  expectation under the flat library layout, so it is refused with a per-item
-  `error` recommending `--mode copy` or `--mode hardlink`; nothing is placed
-  and the client is not mutated. The refusal runs after classification and
-  scope. This prevents the live-verified re-download/duplicate loop.
+  single-file torrents only. A **folder torrent** (the client reports a
+  `root_path` directory) does not match the client's
+  `<save_path>/<torrent name>/` expectation under the flat library layout, so
+  it is refused with a per-item `error` recommending `--mode copy` or
+  `--mode hardlink`; nothing is placed and the client is not mutated. An
+  already-handled folder torrent is a no-op with removals suppressed (the
+  download copies are the client's seeding paths). The refusal runs after
+  classification and scope. This prevents the live-verified
+  re-download/duplicate loop.
+- Client `move` + `--post-ingest pause` pauses **before** `setLocation`, because
+  the relocation is asynchronous: stopping mid-move leaves the torrent at
+  progress 0 until a recheck. Pausing first keeps it complete and paused.
 
 | #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                                                                                         |
 | --- | -------------- | ------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

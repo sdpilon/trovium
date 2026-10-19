@@ -19,6 +19,7 @@ def _torrent(
     name: str,
     content_path: Path,
     *,
+    root_path: Path | None = None,
     progress: float = 1.0,
     state: str = "uploading",
     category: str = "movies",
@@ -31,6 +32,7 @@ def _torrent(
         "state": state,
         "save_path": str(content_path.parent),
         "content_path": str(content_path),
+        "root_path": "" if root_path is None else str(root_path),
         "category": category,
     }
 
@@ -437,7 +439,7 @@ def test_multi_file_torrent_with_move_is_refused_with_guidance(
     library.mkdir()
 
     calls: list[str] = []
-    transport = _transport([_torrent("Show.Name.S01", content)])
+    transport = _transport([_torrent("Show.Name.S01", content, root_path=content)])
     import trovium.cli as cli_module
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -474,7 +476,7 @@ def test_multi_file_torrent_ingests_with_copy_mode(
     library = tmp_path / "library"
     library.mkdir()
 
-    transport = _transport([_torrent("Show.Name.S01", content)])
+    transport = _transport([_torrent("Show.Name.S01", content, root_path=content)])
     import trovium.cli as cli_module
 
     monkeypatch.setattr(
@@ -505,7 +507,12 @@ def test_folder_torrent_with_one_media_file_is_refused_in_move_mode(
     library = tmp_path / "library"
     library.mkdir()
 
-    transport = _transport([_torrent("Folder.Film.2024.1080p", content)])
+    # qBittorrent reports content_path as the file for a one-file folder torrent;
+    # root_path is the directory and is what distinguishes torrent shape
+    media = content / "Folder.Film.2024.1080p.mkv"
+    transport = _transport(
+        [_torrent("Folder.Film.2024.1080p", media, root_path=content)]
+    )
     import trovium.cli as cli_module
 
     monkeypatch.setattr(
@@ -538,7 +545,7 @@ def test_scoped_out_folder_torrent_is_not_refused(
     library = tmp_path / "library"
     library.mkdir()
 
-    transport = _transport([_torrent("Show.Name.S02", content)])
+    transport = _transport([_torrent("Show.Name.S02", content, root_path=content)])
     import trovium.cli as cli_module
 
     monkeypatch.setattr(
@@ -596,6 +603,83 @@ def test_dry_run_plans_setlocation_for_already_handled_removal(
     executed_detail = executed_item["client_actions"][0]["detail"]
     assert planned_detail == f"planned: {executed_detail}"
     assert not media.exists()
+
+
+def test_already_handled_folder_torrent_is_not_an_error_in_move_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Show.Name.S02"
+    content.mkdir(parents=True)
+    (content / "Show.Name.S02E01.mkv").write_bytes(b"a")
+    (content / "Show.Name.S02E02.mkv").write_bytes(b"b")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport([_torrent("Show.Name.S02", content, root_path=content)])
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, first, _ = _run(library, "--mode", "copy")
+    assert code == 0
+    assert first["items"][0]["disposition"] == "ingested"
+
+    # move mode now refuses only when a placement would occur; here it is a no-op
+    code, second, _ = _run(library)
+    item = second["items"][0]
+    assert code == 0
+    assert item["disposition"] == "already_handled"
+    assert item["actions"] == []
+    assert content.exists()  # download copies are what the client seeds from
+
+
+def test_move_with_pause_pauses_before_relocating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Movie.Production.2024.1080p-iGor"
+    content.mkdir(parents=True)
+    media = content / "Movie.Production.2024.1080p-iGor.mkv"
+    media.write_bytes(b"movie-bytes")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/api/v2/torrents/info":
+            return httpx.Response(
+                200,
+                json=[_torrent("Movie.Production.2024.1080p-iGor", media)],
+            )
+        return httpx.Response(200, text="Ok.")
+
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=httpx.MockTransport(handler)
+        ),
+    )
+
+    code, record, _ = _run(library, "--post-ingest", "pause")
+
+    assert code == 0
+    assert record["items"][0]["disposition"] == "ingested"
+    ops = [action["op"] for action in record["items"][0]["client_actions"]]
+    assert ops == ["pause", "setLocation"]
+    # pause must land before the async move, or qBittorrent settles at 0%
+    assert calls.index("/api/v2/torrents/stop") < calls.index(
+        "/api/v2/torrents/setLocation"
+    )
 
 
 def test_client_mode_dry_run_plan_matches_the_real_run(

@@ -31,6 +31,7 @@ class ClientEntry:
     hash: str
     name: str
     content_path: Path
+    root_path: Path
     completion: CompletionState
     client_state: ClientState
     category: str | None
@@ -150,12 +151,17 @@ class QbittorrentClient:
             if isinstance(content_path, str) and content_path
             else Path(save_path) / name
         )
+        root_path = raw.get("root_path")
+        resolved_root = (
+            Path(root_path) if isinstance(root_path, str) and root_path else resolved
+        )
         complete = float(progress) >= 1.0 or state in _COMPLETE_STATES
         category = raw.get("category")
         return ClientEntry(
             hash=torrent_hash,
             name=name,
             content_path=resolved,
+            root_path=resolved_root,
             completion=CompletionState.COMPLETE
             if complete
             else CompletionState.INCOMPLETE,
