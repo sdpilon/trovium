@@ -39,11 +39,40 @@ class Plan:
     reason: str | None = None
 
 
+def _filesystem_anchor(path: Path) -> Path | None:
+    """Nearest existing path at or above ``path``.
+
+    Plan-time probes may run before the destination directory is created.
+    """
+    for candidate in (path, *path.parents):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _same_filesystem(source: Path, destination_dir: Path) -> bool:
+    anchor = _filesystem_anchor(destination_dir)
+    if anchor is None:
+        return False
     try:
-        return source.stat().st_dev == destination_dir.stat().st_dev
+        return source.stat().st_dev == anchor.stat().st_dev
     except OSError:
         return False
+
+
+def _planned_operation(
+    mode: Mode, source: Path, destination: Path
+) -> tuple[ActionKind, str | None]:
+    """Predict the operation and any fallback note (SC-005 parity at plan time)."""
+    same_fs = _same_filesystem(source, destination)
+    if mode is Mode.HARDLINK and not same_fs:
+        return (
+            ActionKind.COPY,
+            "hardlink unavailable across filesystems; copied instead",
+        )
+    if mode is Mode.MOVE and not same_fs:
+        return ActionKind.MOVE, "cross-volume move: copied then removed source"
+    return ActionKind(mode.value), None
 
 
 def _same_file(source: Path, target: Path) -> bool:
@@ -110,10 +139,11 @@ def plan_placement(
             )
         actions.append(
             Action(
-                op=ActionKind(mode.value),
+                op=_planned_operation(mode, source, destination)[0],
                 source=str(source),
                 destination=str(destination / source.name),
                 bytes=size,
+                note=_planned_operation(mode, source, destination)[1],
             )
         )
     return Plan(
