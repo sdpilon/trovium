@@ -261,3 +261,21 @@ code and `spec.md` / `plan.md` / `data-model.md`. Ordered by severity.
       run-level failure in `contracts/cli.md` completion-side behaviors, matching
       the implemented fail-closed behavior (constitution VI) and T013
       (partial)
+
+---
+
+## Phase 10: Convergence
+
+**Purpose**: Reconcile the specification and quickstart with behavior added in
+response to the live qBittorrent review.
+
+- [x] T032 Amend `spec.md` FR-003 (and the Assumptions if needed) to record the
+      client-mode `--mode move` exception now implemented and documented in
+      `contracts/cli.md` and `data-model.md`: folder torrents are refused with a
+      per-item error recommending `--mode copy`/`--mode hardlink`, an
+      already-handled folder torrent is a no-op with removals suppressed, and the
+      refusal runs after classification/scope (partial)
+- [x] T033 Extend `quickstart.md` Scenario 5 with the live-verified checks:
+      a folder torrent under `--mode move` is refused with guidance, and
+      `--mode move --post-ingest pause` pauses before relocation (record order
+      `pause` then `setLocation`) (partial)
