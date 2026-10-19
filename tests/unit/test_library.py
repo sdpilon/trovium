@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from trovium.classify import classify
 from trovium.library import (
     Sameness,
@@ -76,3 +78,23 @@ def test_compare_existing_collision_on_equal_size_different_bytes(
     destination.mkdir()
     (destination / "src.mkv").write_bytes(b"bbb")
     assert compare_existing(destination, (source,)).sameness is Sameness.COLLISION
+
+
+@pytest.mark.parametrize("order", ["first-missing", "second-missing"])
+def test_compare_existing_detects_collision_in_partial_overlap(
+    tmp_path: Path, order: str
+) -> None:
+    # one file present with different content, one absent: a collision on any
+    # present file wins, independent of the candidate's file order
+    destination = tmp_path / "dest"
+    destination.mkdir()
+    (destination / "shared.mkv").write_bytes(b"OLD-CONTENT")
+    present = tmp_path / "shared.mkv"
+    present.write_bytes(b"NEW-CONTENT")
+    absent = tmp_path / "absent.mkv"
+    absent.write_bytes(b"x")
+    files = (absent, present) if order == "first-missing" else (present, absent)
+
+    result = compare_existing(destination, files)
+    assert result.sameness is Sameness.COLLISION
+    assert result.detail is not None

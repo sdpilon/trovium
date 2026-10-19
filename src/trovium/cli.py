@@ -20,6 +20,7 @@ from trovium.classify import Classification, Kind, classify
 from trovium.library import compare_existing, resolve_destination
 from trovium.placement import apply_placement, plan_placement
 from trovium.record import (
+    ActionKind,
     Category,
     ClientAction,
     Declared,
@@ -87,7 +88,7 @@ class MisuseError(Exception):
 
 def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
     """Refuse misuse before any work (contracts/cli.md)."""
-    source = Path(args.source).expanduser() if args.source else None
+    source = Path(args.source).expanduser().resolve() if args.source else None
     client_url: str | None = args.client_url
 
     if source is not None and client_url:
@@ -107,7 +108,7 @@ def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
         if not os.access(source, os.R_OK | os.X_OK):
             raise MisuseError(f"--source is not readable: {source}")
 
-    library_root = Path(args.library_root).expanduser()
+    library_root = Path(args.library_root).expanduser().resolve()
     if not library_root.exists():
         raise MisuseError(f"--library-root does not exist: {library_root}")
     if not library_root.is_dir():
@@ -147,18 +148,29 @@ def process(
     library_root: Path,
     declared: Declared,
     dry_run: bool,
-) -> ItemRecord | None:
+) -> ItemRecord:
     """Classify and (unless dry-run) place one candidate.
 
-    Returns ``None`` when the candidate falls outside the declared category
-    scope; unresolvable candidates stay visible under any scope (T017).
+    Every candidate produces a record: ones outside the declared category
+    scope are reported as ``rejected_out_of_scope`` with a scope reason rather
+    than vanishing (SC-003); a candidate whose files are not visible on this
+    host is a named error, not "no media" (SC-003, Edge Cases).
     """
     if not candidate.files:
+        root = candidate.root
+        if root is not None and not root.exists():
+            return ItemRecord(
+                name=candidate.name,
+                source=candidate.source,
+                disposition=Disposition.ERROR,
+                reason=f"source path not visible on this host: {root}",
+            )
+        where = f" in {root}" if root is not None else ""
         return ItemRecord(
             name=candidate.name,
             source=candidate.source,
             disposition=Disposition.REJECTED_OUT_OF_SCOPE,
-            reason="no ingestable media files",
+            reason=f"no ingestable media files{where}",
         )
     classification = classify(
         candidate.name, tuple(path.name for path in candidate.files)
@@ -171,7 +183,14 @@ def process(
             reason="name grammar not confidently matched",
         )
     if not in_scope(classification, declared.category):
-        return None
+        return ItemRecord(
+            name=candidate.name,
+            source=candidate.source,
+            disposition=Disposition.REJECTED_OUT_OF_SCOPE,
+            reason=f"outside the declared category scope ({declared.category.value})",
+            kind=classification.kind.value,
+            title=classification.title,
+        )
 
     destination = resolve_destination(classification, library_root)
     existing = compare_existing(destination, candidate.files)
@@ -201,12 +220,33 @@ def run_disk(
     )
     for candidate in candidates:
         record = process(candidate, library_root, declared, dry_run)
-        if record is None:
-            continue
         summary.items.append(record)
         if record.disposition is Disposition.ERROR and declared.on_fail is OnFail.STOP:
             break
     return summary
+
+
+def _planned_client_actions(
+    declared: Declared, torrent_hash: str, destination: str | None
+) -> list[ClientAction]:
+    """The client operations a real run would perform for this item (FR-006)."""
+    planned: list[ClientAction] = []
+    if declared.mode is Mode.MOVE and destination is not None:
+        planned.append(
+            ClientAction(
+                op="setLocation",
+                detail=f"planned: hashes={torrent_hash} location={destination}",
+            )
+        )
+    if declared.post_ingest is PostIngest.PAUSE:
+        planned.append(
+            ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
+        )
+    elif declared.post_ingest is PostIngest.DELETE:
+        planned.append(
+            ClientAction(op="delete", detail=f"planned: hashes={torrent_hash}")
+        )
+    return planned
 
 
 def run_client(
@@ -246,11 +286,20 @@ def run_client(
             continue
 
         record = process(candidate, library_root, declared, dry_run)
-        if record is None:
-            continue
-        if record.disposition is Disposition.INGESTED and not dry_run:
-            torrent_hash = candidate.client_hash
-            assert torrent_hash is not None  # client candidates always carry hash
+        torrent_hash = candidate.client_hash
+        assert torrent_hash is not None  # client candidates always carry hash
+
+        if dry_run and record.disposition is Disposition.INGESTED:
+            record.client_actions.extend(
+                _planned_client_actions(declared, torrent_hash, record.destination)
+            )
+
+        removed_sources = record.disposition is Disposition.ALREADY_HANDLED and any(
+            action.op is ActionKind.DELETE for action in record.actions
+        )
+        if not dry_run and (
+            record.disposition is Disposition.INGESTED or removed_sources
+        ):
             try:
                 if declared.mode is Mode.MOVE and record.destination is not None:
                     client.set_location(torrent_hash, Path(record.destination))
@@ -262,16 +311,17 @@ def run_client(
                             ),
                         )
                     )
-                if declared.post_ingest is PostIngest.PAUSE:
-                    client.pause(torrent_hash)
-                    record.client_actions.append(
-                        ClientAction(op="pause", detail=f"hashes={torrent_hash}")
-                    )
-                elif declared.post_ingest is PostIngest.DELETE:
-                    client.delete(torrent_hash)
-                    record.client_actions.append(
-                        ClientAction(op="delete", detail=f"hashes={torrent_hash}")
-                    )
+                if record.disposition is Disposition.INGESTED:
+                    if declared.post_ingest is PostIngest.PAUSE:
+                        client.pause(torrent_hash)
+                        record.client_actions.append(
+                            ClientAction(op="pause", detail=f"hashes={torrent_hash}")
+                        )
+                    elif declared.post_ingest is PostIngest.DELETE:
+                        client.delete(torrent_hash)
+                        record.client_actions.append(
+                            ClientAction(op="delete", detail=f"hashes={torrent_hash}")
+                        )
             except AdapterError as error:
                 record = ItemRecord(
                     name=candidate.name,

@@ -187,13 +187,18 @@ def test_category_scope_touches_only_the_selected_kind(tmp_path: Path) -> None:
     by_name = {item["name"]: item for item in record["items"]}
 
     assert by_name["Movie.Production.2024.1080p-iGor"]["disposition"] == "ingested"
-    assert "Show.Name.S02" not in by_name
+    # out-of-scope candidates are reported, not silently dropped (SC-003)
+    assert by_name["Show.Name.S02"]["disposition"] == "rejected_out_of_scope"
+    assert (
+        "outside the declared category scope (movie)"
+        in by_name["Show.Name.S02"]["reason"]
+    )
     assert (source / "Show.Name.S02").exists()
     # unresolvable stays visible under any scope
     assert by_name["loose-unlabeled-thing.mkv"]["disposition"] == "unresolvable"
 
 
-def test_empty_result_is_clean_success(tmp_path: Path) -> None:
+def test_empty_result_reports_the_out_of_scope_item(tmp_path: Path) -> None:
     source, library = tmp_path / "source", tmp_path / "library"
     source.mkdir()
     library.mkdir()
@@ -203,7 +208,12 @@ def test_empty_result_is_clean_success(tmp_path: Path) -> None:
 
     code, record = _run(source, library, "--category", "movie")
     assert code == 0
-    assert record["items"] == []
+    assert record["counts"]["ingested"] == 0
+    assert record["counts"]["total"] == 1
+    item = record["items"][0]
+    assert item["name"] == "Show.Name.S01"
+    assert item["disposition"] == "rejected_out_of_scope"
+    assert "outside the declared category scope (movie)" in item["reason"]
     assert (source / "Show.Name.S01").exists()
 
 
