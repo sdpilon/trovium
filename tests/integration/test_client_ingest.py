@@ -466,3 +466,90 @@ def test_client_mode_dry_run_plan_matches_the_real_run(
     assert code == 0
     assert planned["items"][0]["actions"] == executed["items"][0]["actions"]
     assert planned["items"][0]["destination"] == executed["items"][0]["destination"]
+
+
+def test_pause_uses_stop_endpoint_on_qbittorrent_5(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, text="Ok.")
+
+    client = QbittorrentClient(
+        BASE_URL, "admin", "secret", transport=httpx.MockTransport(handler)
+    )
+    client.pause("abc123")
+    assert calls == ["/api/v2/torrents/stop"]
+
+
+def test_pause_falls_back_to_legacy_endpoint_on_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/api/v2/torrents/stop":
+            return httpx.Response(404)
+        return httpx.Response(200, text="Ok.")
+
+    client = QbittorrentClient(
+        BASE_URL, "admin", "secret", transport=httpx.MockTransport(handler)
+    )
+    client.pause("abc123")
+    assert calls == ["/api/v2/torrents/stop", "/api/v2/torrents/pause"]
+
+
+def test_second_client_run_after_setlocation_keeps_the_library_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # After run 1 the client's content_path is the placed library file
+    # (qBittorrent's documented single-file behavior). Run 2 must be a no-op
+    # and must never delete that file.
+    content = tmp_path / "downloads" / "Movie.Production.2024.1080p-iGor"
+    content.mkdir(parents=True)
+    source_file = content / "Movie.Production.2024.1080p-iGor.mkv"
+    source_file.write_bytes(b"movie-bytes")
+    library = tmp_path / "library"
+    library.mkdir()
+    placed = (
+        library
+        / "Movies"
+        / "Movie Production (2024)"
+        / "Movie.Production.2024.1080p-iGor.mkv"
+    )
+
+    state = {"path": source_file}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/torrents/info":
+            return httpx.Response(
+                200, json=[_torrent("Movie.Production.2024.1080p-iGor", state["path"])]
+            )
+        return httpx.Response(200, text="Ok.")
+
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=httpx.MockTransport(handler)
+        ),
+    )
+
+    code, first, _ = _run(library)
+    assert code == 0
+    assert first["items"][0]["disposition"] == "ingested"
+    assert placed.exists()
+
+    state["path"] = placed  # the client now points at the library file
+    code, second, _ = _run(library)
+
+    assert code == 0
+    item = second["items"][0]
+    assert item["disposition"] == "already_handled"
+    assert item["actions"] == []
+    assert placed.exists()

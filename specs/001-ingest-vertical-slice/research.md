@@ -36,9 +36,11 @@ treats everything it cannot resolve confidently as classification
 
 **Decision**: Implement the adapter against the qBittorrent **WebUI API v2**
 (`/api/v2/auth/login`, `torrents/info`, `torrents/setLocation`,
-`torrents/pause`, `torrents/delete`) over HTTPS-friendly HTTP transport, using
-`httpx`, session-cookie login, base URL + username + password from environment
-variables or `--client-url` (URL) and env (credentials).
+`torrents/stop` with a `torrents/pause` fallback, `torrents/delete`) over
+HTTPS-friendly HTTP transport, using `httpx`, session-cookie login, base URL +
+username + password from environment variables or `--client-url` (URL) and env
+(credentials). qBittorrent 5.x renamed pause to `stop` (`pause` answers 404);
+4.x only has `pause`, so the adapter tries `stop` first and falls back on 404.
 
 **Rationale**: WebUI API v2 is qBittorrent's stable, documented interface and
 the standard integration surface; every capability this spec needs exists in
