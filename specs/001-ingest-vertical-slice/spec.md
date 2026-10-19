@@ -190,7 +190,14 @@ the emitted plan is exact and both the source and library are unchanged.
   with `move` (the default) the files are relocated out of the download
   location; with `copy` or `hardlink` the original download files remain in
   place (a hardlink shares storage only when the source and destination are on
-  the same filesystem, otherwise behaving as copy).
+  the same filesystem, otherwise behaving as copy). **Client-mode exception**:
+  with `--mode move`, a **folder torrent** (the client reports a `root_path`
+  directory, including one holding a single video plus sidecars) is refused as
+  a per-item error recommending `--mode copy` or `--mode hardlink`; the client
+  expects `<save_path>/<torrent name>/` and the flat layout would break
+  seeding. An already-handled folder torrent is a no-op with source removal
+  suppressed. The refusal is evaluated after classification and category
+  scope.
 - **FR-004**: The ingest step MUST NOT double-handle media it has already
   ingested, whether the candidate is still present in the declared source (the
   client or the source directory) or no longer is. Recognition is

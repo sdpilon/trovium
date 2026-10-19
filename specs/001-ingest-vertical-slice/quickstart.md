@@ -141,11 +141,31 @@ uv run trovium-ingest --library-root "$tmp/library" --json pretty
 
 **Expected**:
 
-- completed, seeded torrent → placed into the library, disposition
+- completed, single-file seeded torrent → placed into the library, disposition
   `ingested`, record `source: "client"`;
+- a **folder torrent** (multi-file, or one video plus sidecars) under the
+  default `--mode move` → per-item `error` recommending `--mode copy` or
+  `--mode hardlink`, with nothing placed and the client's `save_path`
+  unchanged;
+- `--mode copy` or `--mode hardlink` for a folder torrent → `ingested`, source
+  kept, seeding still at 100%;
 - incomplete downloads left untouched as `not_yet_complete` (no error);
 - wrong password / unreachable URL → exit 3 with a named error on stderr and
   nothing placed (FR-008).
+
+Additional checks:
+
+```sh
+# folder torrent under move: refused with guidance
+uv run trovium-ingest --library-root "$tmp/library" --json compact
+
+# pause + move: pause, setLocation, recheck, in that order; torrent stays 100%
+uv run trovium-ingest --library-root "$tmp/library" --post-ingest pause --json compact
+```
+
+**Expected**: the first run's item is `error` with the copy/hardlink guidance;
+the second run's `client_actions` lists `pause`, `setLocation`, `recheck`, and
+the client reports the torrent stopped but complete (100%).
 
 If no client is available, record the client-mode half as **not independently
 verified** rather than marking it passed; the automated suite covers the same
