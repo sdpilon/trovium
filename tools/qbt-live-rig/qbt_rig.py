@@ -411,6 +411,8 @@ class Qbt:
 
 def _port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        # TIME_WAIT sockets from a previous run must not look like listeners
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("127.0.0.1", port))
         except OSError:
@@ -754,20 +756,33 @@ def cmd_seed(args: argparse.Namespace) -> int:
 def cmd_fetch(args: argparse.Namespace) -> int:
     manifest = _manifest(args.name)
     client = Qbt("a")
+    before_bytes = _as_int(client.transfer().get("dl_info_data", 0))
     client.add(Path(manifest["torrent"]), downloads("a"), stopped=False)
     client.wait_registered(str(manifest["info_hash"]))
     state = client.wait_complete(str(manifest["info_hash"]))
-    downloaded = state.get("downloaded")
-    if not isinstance(downloaded, (int, float)) or downloaded <= 0:
-        print(
-            f"{args.name}: no peer data was downloaded (the torrent completed from "
-            "existing files); run reset and fetch again to prove a transfer",
-            file=sys.stderr,
-        )
-        return 1
+    payload_bytes = sum(record["bytes"] for record in manifest["files"])
+    # qBittorrent can report progress 1.0 in the same poll where `downloaded`
+    # is still 0, so settle briefly before deciding no peer data moved.
+    deadline = time.monotonic() + 5.0
+    while True:
+        downloaded = state.get("downloaded")
+        transferred = _as_int(client.transfer().get("dl_info_data", 0)) - before_bytes
+        if (
+            isinstance(downloaded, (int, float)) and downloaded > 0
+        ) or transferred >= payload_bytes:
+            break
+        if time.monotonic() >= deadline:
+            print(
+                f"{args.name}: no peer data was downloaded (the torrent completed "
+                "from existing files); run reset and fetch again to prove a transfer",
+                file=sys.stderr,
+            )
+            return 1
+        time.sleep(0.2)
+        state = client.torrent(str(manifest["info_hash"])) or state
     print(
         f"downloaded {args.name} on a: state={state['state']} "
-        f"progress={state['progress']} bytes={downloaded} "
+        f"progress={state['progress']} bytes={transferred} "
         f"save_path={state['save_path']}"
     )
     if not _verify(args.name, downloads("a")):
@@ -780,6 +795,12 @@ def _as_float(value: object) -> float:
     if isinstance(value, (int, float)):
         return float(value)
     raise TypeError(f"expected a number, got {type(value).__name__}")
+
+
+def _as_int(value: object) -> int:
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
