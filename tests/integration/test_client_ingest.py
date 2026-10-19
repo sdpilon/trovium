@@ -670,16 +670,55 @@ def test_move_with_pause_pauses_before_relocating(
         ),
     )
 
+    code, planned, _ = _run(library, "--post-ingest", "pause", "--dry-run")
+    assert code == 0
+    planned_ops = [action["op"] for action in planned["items"][0]["client_actions"]]
+    assert planned_ops == ["pause", "setLocation", "recheck"]
+
     code, record, _ = _run(library, "--post-ingest", "pause")
 
     assert code == 0
     assert record["items"][0]["disposition"] == "ingested"
     ops = [action["op"] for action in record["items"][0]["client_actions"]]
-    assert ops == ["pause", "setLocation"]
-    # pause must land before the async move, or qBittorrent settles at 0%
+    assert ops == ["pause", "setLocation", "recheck"]
+    # pause must land before the async move, and the recheck follows it
     assert calls.index("/api/v2/torrents/stop") < calls.index(
         "/api/v2/torrents/setLocation"
     )
+    assert calls.index("/api/v2/torrents/setLocation") < calls.index(
+        "/api/v2/torrents/recheck"
+    )
+
+
+def test_wait_until_complete_polls_until_progress_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"calls": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/torrents/info":
+            state["calls"] += 1
+            progress = 0.0 if state["calls"] == 1 else 1.0
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "hash": "abc123",
+                        "name": "x",
+                        "progress": progress,
+                        "state": "stoppedDL",
+                        "save_path": "/tmp",
+                        "root_path": "",
+                    }
+                ],
+            )
+        return httpx.Response(200, text="Ok.")
+
+    client = QbittorrentClient(
+        BASE_URL, "admin", "secret", transport=httpx.MockTransport(handler)
+    )
+    client.wait_until_complete("abc123", timeout=5.0, interval=0.0)
+    assert state["calls"] == 2
 
 
 def test_client_mode_dry_run_plan_matches_the_real_run(

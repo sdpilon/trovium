@@ -7,6 +7,7 @@ cause (constitution VI).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -202,6 +203,38 @@ class QbittorrentClient:
             "/api/v2/torrents/delete",
             {"hashes": torrent_hash, "deleteFiles": "false"},
         )
+
+    def recheck(self, torrent_hash: str) -> None:
+        """Ask the client to re-verify this torrent's files."""
+        self._post("/api/v2/torrents/recheck", {"hashes": torrent_hash})
+
+    def wait_until_complete(
+        self, torrent_hash: str, *, timeout: float = 30.0, interval: float = 0.5
+    ) -> None:
+        """Poll until the torrent reports complete, or fail with a named cause.
+
+        A paused torrent whose files were just relocated can report progress 0
+        until it rechecks; waiting keeps the paused state coherent instead of
+        returning a record that says ingested while the client shows 0%.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            match = next(
+                (entry for entry in self.entries() if entry.hash == torrent_hash),
+                None,
+            )
+            if match is None:
+                raise AdapterError(
+                    f"client no longer reports torrent {torrent_hash} after recheck"
+                )
+            if match.completion is CompletionState.COMPLETE:
+                return
+            if time.monotonic() >= deadline:
+                raise AdapterError(
+                    f"torrent {torrent_hash} did not return to 100% within "
+                    f"{timeout:.0f}s after recheck"
+                )
+            time.sleep(interval)
 
     def _post(self, url: str, data: dict[str, str]) -> None:
         response = self._request("POST", url, data=data)

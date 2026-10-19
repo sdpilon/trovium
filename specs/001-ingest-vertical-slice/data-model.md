@@ -152,7 +152,9 @@ this table):
   re-download/duplicate loop.
 - Client `move` + `--post-ingest pause` pauses **before** `setLocation`, because
   the relocation is asynchronous: stopping mid-move leaves the torrent at
-  progress 0 until a recheck. Pausing first keeps it complete and paused.
+  progress 0 until a recheck. After relocating, the step issues
+  `torrents/recheck` and waits for completion before finishing, so the paused
+  torrent reports 100%.
 
 | #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                                                                                         |
 | --- | -------------- | ------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
