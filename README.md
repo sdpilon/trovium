@@ -72,6 +72,13 @@ uv run trovium-ingest --library-root ~/Media
 Full contracts live in
 [`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/).
 
+> **Client-mode note.** With `--mode move`, the client is pointed at the
+> library folder (`setLocation`). That is safe for single-file torrents; for
+> multi-file torrents the flat library layout does not match the client's
+> `<location>/<torrent name>/` expectation, so seeding from the library is not
+> preserved — use `--mode copy` or `--mode hardlink` for those. The run record
+> notes this on the affected item.
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
