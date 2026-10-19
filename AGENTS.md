@@ -45,9 +45,12 @@ command. Never declare work finished with it red (XXII).
   approval prompt; `--no-verify` is flagged by the hook chain itself.
 - **PR titles/descriptions must not contain emoji** — the message rules
   reject them and the `gates` check fails as a whole.
-- **Spec gate parsing**: an in-development spec's numbered criteria are parsed
-  and executed as acceptance checks; a merged/Draft spec is informational, but
-  a mismatched tasks/spec state can still fail CI parity.
+- **Spec gate acceptance**: encode each success criterion as a fenced `accept`
+  block under a task in `tasks.md`, labelled `# verifies: SC-xxx` and driving
+  the shipped CLI rather than internals. Blocks are enforced only when
+  `spec.md` says exactly `**Status**: Complete` (or `verify.sh --accept` asks
+  for an incomplete feature); other statuses are informational, and a Complete
+  feature with zero blocks has nothing executable to enforce.
 
 ## Projection / vendored surfaces (do not hand-edit)
 
