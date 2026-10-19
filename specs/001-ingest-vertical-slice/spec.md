@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-17
 
-**Status**: Implemented
+**Status**: Complete
 
 **Input**: User description: "the `ingest` vertical slice"
 

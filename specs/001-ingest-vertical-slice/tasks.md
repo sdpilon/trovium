@@ -279,3 +279,128 @@ response to the live qBittorrent review.
       a folder torrent under `--mode move` is refused with guidance, and
       `--mode move --post-ingest pause` pauses before relocation (record order
       `pause` then `setLocation`) (partial)
+
+---
+
+## Phase 11: Executable acceptance criteria
+
+**Purpose**: Encode SC-001–SC-005 and FR-013 as the fenced `accept` blocks the
+spec-conformance gate executes (`verify.sh`, `spec.severity: error`). Every
+block builds its own sandbox under the system temporary directory and drives
+the shipped `trovium-ingest` command, so it proves the CLI rather than calling
+internal functions.
+
+- [x] T034 [P] SC-001 (disk source): one run places an on-disk movie in the
+      conventional library path with its original filename, moves it out of
+      the source, and reports `source: "disk"`
+
+```accept
+# verifies: SC-001 — an on-disk movie is placed intact in one run
+tmp=$(mktemp -d)
+tmp=$(cd "$tmp" && pwd -P)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/source/Movie.Production.2024.1080p-iGor" "$tmp/library"
+printf 'x' > "$tmp/source/Movie.Production.2024.1080p-iGor/Movie.Production.2024.1080p-iGor.mkv"
+out=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --mode move --json compact)
+printf '%s' "$out" | jq -e '.source == "disk" and .dry_run == false' >/dev/null
+printf '%s' "$out" | jq -e '[.items[] | select(.disposition == "ingested")] | length == 1' >/dev/null
+dest=$(printf '%s' "$out" | jq -r '.items[0].destination')
+test "$dest" = "$tmp/library/Movies/Movie Production (2024)"
+test -f "$dest/Movie.Production.2024.1080p-iGor.mkv"
+test ! -e "$tmp/source/Movie.Production.2024.1080p-iGor/Movie.Production.2024.1080p-iGor.mkv"
+```
+
+- [x] T035 [P] SC-002: a second copy-mode run reports `already_handled`, adds
+      no duplicate files, and leaves the source in place
+
+```accept
+# verifies: SC-002 — repeated copy-mode runs are no-ops reported as already_handled
+tmp=$(mktemp -d)
+tmp=$(cd "$tmp" && pwd -P)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/source/Show.Name.S01" "$tmp/library"
+printf 'e' > "$tmp/source/Show.Name.S01/Show.Name.S01E01.mkv"
+printf 'f' > "$tmp/source/Show.Name.S01/Show.Name.S01E02.mkv"
+first=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --mode copy --json compact)
+printf '%s' "$first" | jq -e '.items[0].disposition == "ingested" and .counts.ingested == 1' >/dev/null
+second=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --mode copy --json compact)
+printf '%s' "$second" | jq -e '.items[0].disposition == "already_handled" and .counts.ingested == 0' >/dev/null
+test -f "$tmp/library/TV/Show Name/Season 01/Show.Name.S01E01.mkv"
+test -f "$tmp/library/TV/Show Name/Season 01/Show.Name.S01E02.mkv"
+test "$(find "$tmp/library" -type f | wc -l | tr -d ' ')" = "2"
+test -f "$tmp/source/Show.Name.S01/Show.Name.S01E01.mkv"
+test -f "$tmp/source/Show.Name.S01/Show.Name.S01E02.mkv"
+```
+
+- [x] T036 [P] SC-003/SC-004: non-ingested candidates carry a readable reason,
+      nothing is silently skipped, and `counts` reconciles with `items`
+
+```accept
+# verifies: SC-003/SC-004 — every candidate carries a reason and counts reconcile
+tmp=$(mktemp -d)
+tmp=$(cd "$tmp" && pwd -P)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/source/Movie.Production.2024.1080p-iGor" "$tmp/source/No.Media.Here" "$tmp/library"
+printf 'x' > "$tmp/source/Movie.Production.2024.1080p-iGor/Movie.Production.2024.1080p-iGor.mkv"
+printf 'n' > "$tmp/source/notes.txt"
+printf 'b' > "$tmp/source/No.Media.Here/data.bin"
+out=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --json compact)
+printf '%s' "$out" | jq -e '.counts.total == (.items | length) and .counts.ingested == 1 and .counts.rejected_out_of_scope == 2' >/dev/null
+printf '%s' "$out" | jq -e '(.counts.ingested + .counts.already_handled + .counts.not_yet_complete + .counts.unresolvable + .counts.rejected_out_of_scope + .counts.error) == .counts.total' >/dev/null
+printf '%s' "$out" | jq -e '[.items[] | select((.disposition == "unresolvable" or .disposition == "rejected_out_of_scope" or .disposition == "error") and ((.reason // "") | length == 0))] | length == 0' >/dev/null
+printf '%s' "$out" | jq -e '[.items[] | select((.name // "") | length == 0)] | length == 0' >/dev/null
+test -f "$tmp/library/Movies/Movie Production (2024)/Movie.Production.2024.1080p-iGor.mkv"
+test -f "$tmp/source/notes.txt"
+test -f "$tmp/source/No.Media.Here/data.bin"
+```
+
+- [x] T037 [P] SC-005: `--dry-run` leaves source and library untouched and its
+      `actions` plan equals the real run's field-for-field
+
+```accept
+# verifies: SC-005 — the dry-run plan matches the real run field-for-field
+tmp=$(mktemp -d)
+tmp=$(cd "$tmp" && pwd -P)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/source/Another.Film.2023.720p-GRP" "$tmp/library"
+printf 'y' > "$tmp/source/Another.Film.2023.720p-GRP/Another.Film.2023.720p-GRP.mkv"
+plan=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --dry-run --json compact)
+printf '%s' "$plan" | jq -e '.dry_run == true' >/dev/null
+test "$(find "$tmp/library" -type f | wc -l | tr -d ' ')" = "0"
+test -f "$tmp/source/Another.Film.2023.720p-GRP/Another.Film.2023.720p-GRP.mkv"
+real=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --json compact)
+test "$(printf '%s' "$plan" | jq -Sc '[.items[].actions]')" = "$(printf '%s' "$real" | jq -Sc '[.items[].actions]')"
+```
+
+- [x] T038 [P] FR-013: `--source` combined with `--client-url` or
+      `--post-ingest` is refused with exit 2 before any work
+
+```accept
+# verifies: FR-013 — conflicting source options are refused before any work
+tmp=$(mktemp -d)
+tmp=$(cd "$tmp" && pwd -P)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/source/Some.Movie.2020.1080p-GRP" "$tmp/library"
+printf 'x' > "$tmp/source/Some.Movie.2020.1080p-GRP/Some.Movie.2020.1080p-GRP.mkv"
+rc=0
+out=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --client-url http://127.0.0.1:9 2>"$tmp/err1") || rc=$?
+test "$rc" -eq 2
+test -z "$out"
+grep -q -- '--client-url' "$tmp/err1"
+rc=0
+out=$(uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" --post-ingest delete 2>"$tmp/err2") || rc=$?
+test "$rc" -eq 2
+test -z "$out"
+grep -q -- '--post-ingest' "$tmp/err2"
+test -z "$(find "$tmp/library" -mindepth 1 -print -quit)"
+test -f "$tmp/source/Some.Movie.2020.1080p-GRP/Some.Movie.2020.1080p-GRP.mkv"
+```
+
+- [x] T039 [P] SC-001 (client source): the qBittorrent acceptance paths stay
+      green under the stubbed transport; live client behavior remains a
+      documented manual check in `quickstart.md` Scenario 5
+
+```accept
+# verifies: SC-001 client source — stubbed qBittorrent acceptance paths pass
+PYTHONDONTWRITEBYTECODE=1 uv run --quiet pytest -q -p no:cacheprovider tests/integration/test_client_ingest.py
+```
