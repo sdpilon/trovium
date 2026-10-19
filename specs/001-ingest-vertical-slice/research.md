@@ -41,6 +41,10 @@ HTTPS-friendly HTTP transport, using `httpx`, session-cookie login, base URL +
 username + password from environment variables or `--client-url` (URL) and env
 (credentials). qBittorrent 5.x renamed pause to `stop` (`pause` answers 404);
 4.x only has `pause`, so the adapter tries `stop` first and falls back on 404.
+Torrent shape uses `root_path` (falling back to `content_path` when the client
+omits it): `content_path` is the _file_ for a one-file folder torrent, so it
+cannot distinguish torrent shapes. For `--post-ingest pause` with `move`, the
+pause is issued before `setLocation` because the relocation is asynchronous.
 
 **Rationale**: WebUI API v2 is qBittorrent's stable, documented interface and
 the standard integration surface; every capability this spec needs exists in

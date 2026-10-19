@@ -12,6 +12,7 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from trovium.adapters.qbittorrent import AdapterError
@@ -192,9 +193,13 @@ def process(
             kind=classification.kind.value,
             title=classification.title,
         )
-    if guard is not None:
-        refusal = guard(candidate, classification)
-        if refusal is not None:
+    refusal = guard(candidate, classification) if guard is not None else None
+
+    destination = resolve_destination(classification, library_root)
+    existing = compare_existing(destination, candidate.files)
+    plan = plan_placement(declared.mode, candidate.files, destination, existing)
+    if refusal is not None:
+        if plan.disposition is Disposition.INGESTED:
             return ItemRecord(
                 name=candidate.name,
                 source=candidate.source,
@@ -203,10 +208,13 @@ def process(
                 kind=classification.kind.value,
                 title=classification.title,
             )
-
-    destination = resolve_destination(classification, library_root)
-    existing = compare_existing(destination, candidate.files)
-    plan = plan_placement(declared.mode, candidate.files, destination, existing)
+        if plan.disposition is Disposition.ALREADY_HANDLED:
+            # the client seeds from those copies; suppress the move cleanup
+            plan = replace(
+                plan,
+                actions=(),
+                reason="identical content already in the library",
+            )
     if not dry_run:
         plan = apply_placement(declared.mode, candidate.files, plan)
 
@@ -247,6 +255,16 @@ def _planned_client_actions(
 ) -> list[ClientAction]:
     """The client operations a real run would perform for this item (FR-006)."""
     planned: list[ClientAction] = []
+    pause_first = (
+        include_policy
+        and declared.post_ingest is PostIngest.PAUSE
+        and declared.mode is Mode.MOVE
+        and destination is not None
+    )
+    if pause_first:
+        planned.append(
+            ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
+        )
     if declared.mode is Mode.MOVE and destination is not None:
         planned.append(
             ClientAction(
@@ -256,7 +274,7 @@ def _planned_client_actions(
         )
     if not include_policy:
         return planned
-    if declared.post_ingest is PostIngest.PAUSE:
+    if declared.post_ingest is PostIngest.PAUSE and not pause_first:
         planned.append(
             ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
         )
@@ -305,6 +323,7 @@ def run_client(
                 entry.hash,
                 entry.name,
                 entry.content_path,
+                entry.root_path,
                 entry.completion,
                 entry.client_state,
                 entry.category,
@@ -354,6 +373,17 @@ def run_client(
             record.disposition is Disposition.INGESTED or removed_sources
         ):
             try:
+                pause_first = (
+                    record.disposition is Disposition.INGESTED
+                    and declared.post_ingest is PostIngest.PAUSE
+                    and declared.mode is Mode.MOVE
+                    and record.destination is not None
+                )
+                if pause_first:
+                    client.pause(torrent_hash)
+                    record.client_actions.append(
+                        ClientAction(op="pause", detail=f"hashes={torrent_hash}")
+                    )
                 if declared.mode is Mode.MOVE and record.destination is not None:
                     client.set_location(torrent_hash, Path(record.destination))
                     record.client_actions.append(
@@ -365,7 +395,7 @@ def run_client(
                         )
                     )
                 if record.disposition is Disposition.INGESTED:
-                    if declared.post_ingest is PostIngest.PAUSE:
+                    if declared.post_ingest is PostIngest.PAUSE and not pause_first:
                         client.pause(torrent_hash)
                         record.client_actions.append(
                             ClientAction(op="pause", detail=f"hashes={torrent_hash}")

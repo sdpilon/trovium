@@ -60,7 +60,7 @@ def disk_candidates(source_dir: Path) -> tuple[Candidate, ...]:
 
 def client_candidates(
     entries: tuple[
-        tuple[str, str, Path, CompletionState, ClientState, str | None], ...
+        tuple[str, str, Path, Path, CompletionState, ClientState, str | None], ...
     ],
 ) -> tuple[Candidate, ...]:
     """Adapt adapter-reported entries to candidates (same shape as disk)."""
@@ -69,7 +69,7 @@ def client_candidates(
             name=name,
             source=Source.CLIENT,
             files=collect_media_files(content_path),
-            root=content_path,
+            root=root_path,
             completion=completion,
             client_state=client_state,
             client_category=client_category,
@@ -79,6 +79,7 @@ def client_candidates(
             torrent_hash,
             name,
             content_path,
+            root_path,
             completion,
             client_state,
             client_category,
