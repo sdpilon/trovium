@@ -138,6 +138,12 @@ this table):
   naming the collision path. The spec Edge Case wording's "replaces it
   deliberately" is always a caller-opt-in decision taken in a later step —
   never the default behavior of this step.
+- Client seeding layout (decided scope boundary): move-mode `setLocation` is
+  safe for single-file torrents. Multi-file torrents keep a flat library
+  layout, which does not match the client's `<location>/<torrent name>/`
+  expectation; seeding from the library is therefore not preserved for them.
+  Use `--mode copy` or `--mode hardlink` for multi-file torrents; the
+  placement's `client_actions[].detail` states this when it applies.
 
 | #   | Placement mode | FS relation  | Destination conflict                   | Disposition / behavior                                                                                                          |
 | --- | -------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |

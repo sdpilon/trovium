@@ -227,17 +227,16 @@ def run_disk(
 
 
 def _planned_client_actions(
-    declared: Declared, torrent_hash: str, destination: str | None
+    declared: Declared,
+    torrent_hash: str,
+    destination: str | None,
+    note: str | None = None,
 ) -> list[ClientAction]:
     """The client operations a real run would perform for this item (FR-006)."""
     planned: list[ClientAction] = []
     if declared.mode is Mode.MOVE and destination is not None:
-        planned.append(
-            ClientAction(
-                op="setLocation",
-                detail=f"planned: hashes={torrent_hash} location={destination}",
-            )
-        )
+        detail = f"planned: hashes={torrent_hash} location={destination}"
+        planned.append(ClientAction(op="setLocation", detail=_with_note(detail, note)))
     if declared.post_ingest is PostIngest.PAUSE:
         planned.append(
             ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
@@ -247,6 +246,22 @@ def _planned_client_actions(
             ClientAction(op="delete", detail=f"planned: hashes={torrent_hash}")
         )
     return planned
+
+
+def _with_note(detail: str, note: str | None) -> str:
+    """Append an advisory to a client action detail."""
+    return detail if note is None else f"{detail}; note: {note}"
+
+
+def _move_layout_note(candidate: Candidate) -> str | None:
+    """Advisory for multi-file torrents in client move mode (documented limitation)."""
+    if len(candidate.files) > 1:
+        return (
+            "multi-file torrent in move mode: the library layout is flat, so "
+            "seeding from the library may not match the client's expected "
+            "layout; prefer --mode copy or --mode hardlink"
+        )
+    return None
 
 
 def run_client(
@@ -291,7 +306,12 @@ def run_client(
 
         if dry_run and record.disposition is Disposition.INGESTED:
             record.client_actions.extend(
-                _planned_client_actions(declared, torrent_hash, record.destination)
+                _planned_client_actions(
+                    declared,
+                    torrent_hash,
+                    record.destination,
+                    _move_layout_note(candidate),
+                )
             )
 
         removed_sources = record.disposition is Disposition.ALREADY_HANDLED and any(
@@ -303,12 +323,11 @@ def run_client(
             try:
                 if declared.mode is Mode.MOVE and record.destination is not None:
                     client.set_location(torrent_hash, Path(record.destination))
+                    detail = f"hashes={torrent_hash} location={record.destination}"
                     record.client_actions.append(
                         ClientAction(
                             op="setLocation",
-                            detail=(
-                                f"hashes={torrent_hash} location={record.destination}"
-                            ),
+                            detail=_with_note(detail, _move_layout_note(candidate)),
                         )
                     )
                 if record.disposition is Disposition.INGESTED:
