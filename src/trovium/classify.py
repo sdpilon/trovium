@@ -106,11 +106,13 @@ UNRESOLVABLE = Classification(kind=Kind.UNRESOLVABLE)
 
 
 def _tokens(name: str) -> list[str]:
-    stem = Path(name).name
-    for suffix in (".mkv", ".mp4", ".avi", ".m4v", ".ts", ".webm", ".mov"):
-        if stem.lower().endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
+    """Split a candidate name into tokens, dropping a known video extension.
+
+    The extension set comes from ``VIDEO_EXTENSIONS`` so there is one source of
+    truth for what counts as a media suffix.
+    """
+    path = Path(name)
+    stem = path.stem if path.suffix.lower() in VIDEO_EXTENSIONS else path.name
     return [token for token in re.split(r"[\s._\-\[\]()]+", stem) if token]
 
 
