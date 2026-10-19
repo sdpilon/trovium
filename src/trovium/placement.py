@@ -46,6 +46,14 @@ def _same_filesystem(source: Path, destination_dir: Path) -> bool:
         return False
 
 
+def _same_file(source: Path, target: Path) -> bool:
+    """True when both paths resolve to the same file (never unlink it then)."""
+    try:
+        return target.exists() and source.exists() and os.path.samefile(source, target)
+    except OSError:
+        return False
+
+
 def plan_placement(
     mode: Mode, files: tuple[Path, ...], destination: Path, existing: ExistingItem
 ) -> Plan:
@@ -54,8 +62,12 @@ def plan_placement(
         removals: list[Action] = []
         if mode is Mode.MOVE:
             # move mode completes the move-equivalent by removing the now
-            # redundant source; the plan exposes that removal for dry runs
+            # redundant source; the plan exposes that removal for dry runs.
+            # A source that already *is* the destination file must never be
+            # removed: the item is a no-op, not a redundant copy.
             for source in files:
+                if _same_file(source, destination / source.name):
+                    continue
                 try:
                     size = source.stat().st_size
                 except OSError:
@@ -114,26 +126,33 @@ def plan_placement(
 def apply_placement(mode: Mode, files: tuple[Path, ...], plan: Plan) -> Plan:
     """Execute ``plan``; returns a plan whose disposition is the outcome."""
     if plan.disposition is Disposition.ALREADY_HANDLED:
-        if mode is not Mode.MOVE:
+        if mode is not Mode.MOVE or not plan.actions:
             return plan
-        # move mode completes the move-equivalent: the source copy is now
-        # redundant once identical content is verified in the library
-        try:
-            for source in files:
-                source.unlink(missing_ok=True)
-        except OSError as error:
-            return Plan(
-                disposition=Disposition.ERROR,
-                destination=plan.destination,
-                reason=(
-                    "identical content already in the library, but the redundant "
-                    f"source could not be removed: {error.strerror or error}"
-                ),
-            )
+        # move mode completes the move-equivalent by removing the redundant
+        # source; the plan already excludes sources that are the destination
+        # file itself, so this can never unlink a placed library file.
+        removed: list[Action] = []
+        for action in plan.actions:
+            if action.op is not ActionKind.DELETE:
+                continue
+            try:
+                Path(action.source).unlink(missing_ok=True)
+                removed.append(action)
+            except OSError as error:
+                return Plan(
+                    disposition=Disposition.ERROR,
+                    destination=plan.destination,
+                    actions=tuple(removed),
+                    reason=(
+                        "identical content already in the library, but the "
+                        f"redundant source could not be removed: "
+                        f"{error.strerror or error}"
+                    ),
+                )
         return Plan(
             disposition=Disposition.ALREADY_HANDLED,
             destination=plan.destination,
-            actions=plan.actions,
+            actions=tuple(removed),
             reason="identical content already in the library; redundant source removed",
         )
     if plan.disposition is not Disposition.INGESTED or plan.destination is None:
@@ -141,45 +160,70 @@ def apply_placement(mode: Mode, files: tuple[Path, ...], plan: Plan) -> Plan:
 
     destination = plan.destination
     actions: list[Action] = []
-    for source in files:
-        target = destination / source.name
-        try:
+    applied: list[tuple[Path, Path, ActionKind]] = []
+    try:
+        for source in files:
+            target = destination / source.name
             destination.mkdir(parents=True, exist_ok=True)
-            _perform(mode, source, target, destination)
+            performed, note = _perform(mode, source, target, destination)
+            applied.append((source, target, performed))
             actions.append(
                 Action(
-                    op=ActionKind(mode.value),
+                    op=performed,
                     source=str(source),
                     destination=str(target),
                     bytes=target.stat().st_size,
+                    note=note,
                 )
             )
-        except OSError as error:
-            return Plan(
-                disposition=Disposition.ERROR,
-                destination=destination,
-                actions=tuple(actions),
-                reason=f"cannot place {source.name}: {error.strerror or error}",
-            )
+    except OSError as error:
+        _rollback(applied)
+        return Plan(
+            disposition=Disposition.ERROR,
+            destination=destination,
+            reason=f"cannot place {source.name}: {error.strerror or error}",
+        )
+    notes = [action.note for action in actions if action.note]
     return Plan(
         disposition=Disposition.INGESTED,
         destination=destination,
         actions=tuple(actions),
+        reason="; ".join(notes) if notes else None,
     )
 
 
-def _perform(mode: Mode, source: Path, target: Path, destination: Path) -> None:
+def _rollback(applied: list[tuple[Path, Path, ActionKind]]) -> None:
+    """Best-effort undo of the files placed for the failing item."""
+    for source, target, op in reversed(applied):
+        try:
+            if op is ActionKind.MOVE:
+                shutil.move(str(target), str(source))
+            else:
+                target.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+def _perform(
+    mode: Mode, source: Path, target: Path, destination: Path
+) -> tuple[ActionKind, str | None]:
+    """Perform one placement and report the operation actually used."""
     if mode is Mode.MOVE:
+        cross_volume = not _same_filesystem(source, destination)
         shutil.move(str(source), str(target))
-        return
+        note = "cross-volume move: copied then removed source" if cross_volume else None
+        return ActionKind.MOVE, note
     if mode is Mode.COPY:
         shutil.copy2(source, target)
-        return
+        return ActionKind.COPY, None
     if _same_filesystem(source, destination):
         try:
             os.link(source, target)
-            return
+            return ActionKind.HARDLINK, None
         except OSError as error:
             if error.errno not in _LINK_FALLBACK_ERRNOS:
                 raise
+            shutil.copy2(source, target)
+            return ActionKind.COPY, "hardlink unavailable; copied instead"
     shutil.copy2(source, target)
+    return ActionKind.COPY, "hardlink unavailable across filesystems; copied instead"

@@ -80,14 +80,14 @@ A media entity placed (or already placed) in the library.
 
 The recorded outcome of one candidate in one run.
 
-| Value                 | Meaning                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| ingested              | placed fully; client marked handled after commit only (FR-010)                          |
-| already_handled       | destination-identical library item exists (FR-004)                                      |
-| not_yet_complete      | client source only; incomplete download skipped without error                           |
-| unresolvable          | name grammar not confidently matched; reported with the name                            |
-| rejected_out_of_scope | non-media content (samples, extras, unrelated files)                                    |
-| error                 | named failure; reason required with this value; consumed by `--on-fail` policy (FR-012) |
+| Value                 | Meaning                                                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| ingested              | placed fully; client marked handled after commit only (FR-010)                                                                   |
+| already_handled       | destination-identical library item exists (FR-004)                                                                               |
+| not_yet_complete      | client source only; incomplete download skipped without error                                                                    |
+| unresolvable          | name grammar not confidently matched; reported with the name                                                                     |
+| rejected_out_of_scope | non-media content (samples, extras, unrelated files), or a candidate outside the declared category scope; the reason names which |
+| error                 | named failure; reason required with this value; consumed by `--on-fail` policy (FR-012)                                          |
 
 The record-schema spelling of the error disposition is `error` (T1
 normalization), applied to the Disposition table and the behavior matrix
@@ -130,7 +130,9 @@ this table):
   candidate's file: the placement degrades to a verified no-op and the
   candidate is reported disposition `already_handled` — never re-copied,
   never silently replaced. In move mode the now-redundant source file is
-  removed to complete the move-equivalent, and this is reported.
+  removed to complete the move-equivalent, and this is reported — except
+  when the source _is_ the destination file (same inode), which is a pure
+  no-op: nothing is removed and no `delete` action is planned.
 - Destination exists with the same canonical name but DIFFERENT content: the
   step never overwrites and never auto-renames; the disposition is `error`,
   naming the collision path. The spec Edge Case wording's "replaces it
@@ -145,5 +147,5 @@ this table):
 | 4   | move           | cross volume | none                                   | copy + delete source; seed-safety warning in record                                                                             |
 | 5   | copy/hardlink  | —            | none                                   | original stays; disposition ingested                                                                                            |
 | 6   | copy/hardlink  | —            | identical content                      | original stays; disposition already_handled (no duplicate created)                                                              |
-| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003), reason recorded                                                                        |
+| 7   | hardlink       | cross volume | none                                   | falls back to behavior of copy (FR-003); action records `op: "copy"` with a `note` naming the fallback                          |
 | 8   | copy/hardlink  | —            | name clash, different content          | do not overwrite; disposition `error`                                                                                           |

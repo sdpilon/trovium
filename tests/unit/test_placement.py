@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -70,13 +72,46 @@ def test_cross_filesystem_hardlink_behaves_as_copy(
 
     monkeypatch.setattr("trovium.placement._same_filesystem", lambda *_: False)
     plan = plan_placement(Mode.HARDLINK, (source,), destination, _no_conflict())
-    apply_placement(Mode.HARDLINK, (source,), plan)
+    outcome = apply_placement(Mode.HARDLINK, (source,), plan)
 
     placed = destination / "movie.mkv"
     assert placed.exists()
     assert source.exists()
     assert placed.stat().st_ino != source.stat().st_ino
     assert placed.read_bytes() == b"payload"
+    # the record says what actually happened, not what was requested
+    assert outcome.actions[0].op is ActionKind.COPY
+    assert outcome.actions[0].note is not None
+    assert "hardlink unavailable" in outcome.actions[0].note
+    assert outcome.reason is not None
+
+
+def test_partial_failure_rolls_back_placed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    good = tmp_path / "part1.mkv"
+    good.write_bytes(b"one")
+    bad = tmp_path / "part2.mkv"
+    bad.write_bytes(b"two")
+    destination = tmp_path / "lib" / "Movie"
+
+    real_copy = shutil.copy2
+
+    def copy_then_fail(src: Path, dst: Path) -> Path:
+        if Path(src).name == "part2.mkv":
+            raise OSError(errno.EACCES, "permission denied")
+        return Path(real_copy(src, dst))
+
+    monkeypatch.setattr("trovium.placement.shutil.copy2", copy_then_fail)
+    plan = plan_placement(Mode.COPY, (good, bad), destination, _no_conflict())
+    outcome = apply_placement(Mode.COPY, (good, bad), plan)
+
+    assert outcome.disposition is Disposition.ERROR
+    assert outcome.reason is not None
+    # nothing is half-placed: the first file was rolled back
+    assert not (destination / "part1.mkv").exists()
+    assert not (destination / "part2.mkv").exists()
+    assert good.exists()
 
 
 def test_hardlink_os_link_failure_falls_back_to_copy(
@@ -129,6 +164,31 @@ def test_identical_content_move_mode_removes_redundant_source(tmp_path: Path) ->
     assert "redundant source removed" in outcome.reason
     assert [action.op for action in outcome.actions] == [ActionKind.DELETE]
     assert not source.exists()
+
+
+def test_already_handled_never_unlinks_the_placed_file_itself(
+    tmp_path: Path,
+) -> None:
+    # client mode reaches this state: after setLocation the torrent's content
+    # path IS the placed file, so the source must not be deleted as "redundant"
+    destination = tmp_path / "lib" / "Movie"
+    destination.mkdir(parents=True)
+    placed = destination / "movie.mkv"
+    placed.write_bytes(b"payload")
+
+    plan = plan_placement(
+        Mode.MOVE,
+        (placed,),
+        destination,
+        ExistingItem(sameness=Sameness.IDENTICAL),
+    )
+    assert plan.actions == ()
+    outcome = apply_placement(Mode.MOVE, (placed,), plan)
+
+    assert outcome.disposition is Disposition.ALREADY_HANDLED
+    assert outcome.actions == ()
+    assert placed.read_bytes() == b"payload"
+    assert outcome.reason == "identical content already in the library"
 
 
 def test_same_name_different_content_is_error_never_overwrite(tmp_path: Path) -> None:

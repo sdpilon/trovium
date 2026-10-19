@@ -83,17 +83,20 @@ def compare_existing(destination: Path, files: tuple[Path, ...]) -> ExistingItem
     """Compare candidate files with the destination, never overwriting blindly.
 
     Identity by (kind, title, season, file-name set) first is the caller's job;
-    here each candidate file is checked against the same name at the
-    destination: size equality first, BLAKE2b only when sizes match.
+    here **every** candidate file is checked against the same name at the
+    destination: size equality first, BLAKE2b only when sizes match. A single
+    missing target means the item is new (``NONE``); a single present target
+    with different content means ``COLLISION`` regardless of file order.
     """
     if not files:
         return ExistingItem(sameness=Sameness.NONE)
-    present = 0
+
+    any_missing = False
     for source in files:
         target = destination / source.name
         if not target.exists():
-            return ExistingItem(sameness=Sameness.NONE)
-        present += 1
+            any_missing = True
+            continue
         try:
             if target.stat().st_size != source.stat().st_size:
                 return ExistingItem(
@@ -110,6 +113,6 @@ def compare_existing(destination: Path, files: tuple[Path, ...]) -> ExistingItem
                 sameness=Sameness.COLLISION,
                 detail=f"cannot compare with {target}: {error.strerror or error}",
             )
-    if present == len(files):
-        return ExistingItem(sameness=Sameness.IDENTICAL)
-    return ExistingItem(sameness=Sameness.NONE)
+    if any_missing:
+        return ExistingItem(sameness=Sameness.NONE)
+    return ExistingItem(sameness=Sameness.IDENTICAL)

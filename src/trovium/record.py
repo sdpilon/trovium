@@ -88,15 +88,19 @@ class Action:
     source: str
     destination: str
     bytes: int
+    note: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         """Serialize using the contract's ``from``/``to`` field names."""
-        return {
+        payload: dict[str, Any] = {
             "op": self.op.value,
             "from": self.source,
             "to": self.destination,
             "bytes": self.bytes,
         }
+        if self.note is not None:
+            payload["note"] = self.note
+        return payload
 
 
 @dataclass(frozen=True)

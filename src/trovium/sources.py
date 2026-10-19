@@ -36,6 +36,7 @@ class Candidate:
     name: str
     source: Source
     files: tuple[Path, ...]
+    root: Path | None = None
     completion: CompletionState = CompletionState.COMPLETE
     client_state: ClientState = ClientState.NONE
     client_category: str | None = None
@@ -51,6 +52,7 @@ def disk_candidates(source_dir: Path) -> tuple[Candidate, ...]:
                 name=child.name,
                 source=Source.DISK,
                 files=collect_media_files(child),
+                root=child,
             )
         )
     return tuple(candidates)
@@ -67,6 +69,7 @@ def client_candidates(
             name=name,
             source=Source.CLIENT,
             files=collect_media_files(content_path),
+            root=content_path,
             completion=completion,
             client_state=client_state,
             client_category=client_category,

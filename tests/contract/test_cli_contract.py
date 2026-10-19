@@ -233,3 +233,26 @@ def test_no_credentials_or_env_values_in_record(
         == 0
     )
     assert "sup3r-s3cret" not in capsys.readouterr().out
+
+
+def test_relative_library_root_is_recorded_as_absolute(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "source" / "Movie.Production.2024.1080p-iGor").mkdir(parents=True)
+    (
+        tmp_path
+        / "source"
+        / "Movie.Production.2024.1080p-iGor"
+        / "Movie.Production.2024.1080p-iGor.mkv"
+    ).write_bytes(b"payload")
+    (tmp_path / "library").mkdir()
+
+    code = cli.main(["--source", "source", "--library-root", "library", "--dry-run"])
+    record = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert Path(record["declared"]["library_root"]).is_absolute()
+    item = record["items"][0]
+    assert Path(item["destination"]).is_absolute()
+    assert Path(item["actions"][0]["to"]).is_absolute()

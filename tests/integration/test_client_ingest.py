@@ -359,10 +359,47 @@ def test_dry_run_in_client_mode_does_not_call_the_client(
 
     assert code == 0
     assert record["dry_run"] is True
-    assert record["items"][0]["actions"]
+    item = record["items"][0]
+    assert item["actions"]
+    # FR-006: the plan also says what a real run would do to the client
+    assert [action["op"] for action in item["client_actions"]] == ["setLocation"]
+    assert item["client_actions"][0]["detail"].startswith("planned:")
     assert "/api/v2/torrents/setLocation" not in calls
     assert "/api/v2/torrents/delete" not in calls
     assert content.exists()
+
+
+def test_client_candidate_with_invisible_content_is_a_named_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "downloads" / "not-on-this-host"
+    library = tmp_path / "library"
+    library.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/torrents/info":
+            return httpx.Response(
+                200, json=[_torrent("Missing.Content.2024.1080p", missing)]
+            )
+        return httpx.Response(200, text="Ok.")
+
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=httpx.MockTransport(handler)
+        ),
+    )
+
+    code, record, _ = _run(library)
+
+    assert code == 0
+    item = record["items"][0]
+    assert item["disposition"] == "error"
+    assert "source path not visible on this host" in item["reason"]
+    assert str(missing) in item["reason"]
 
 
 def test_client_mode_dry_run_plan_matches_the_real_run(
