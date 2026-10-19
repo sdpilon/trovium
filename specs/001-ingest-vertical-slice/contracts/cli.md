@@ -61,12 +61,13 @@ command line and never emitted into the run record (constitution I, FR-012).
   constitution VI).
 - Placement executes only for fully classified candidates; file names are
   preserved byte-for-byte (FR-003).
-- In client mode, `--mode move` issues `setLocation` to the library folder.
-  That path is **single-file-torrent-safe**. For multi-file torrents the flat
-  library layout does not match the client's expected
-  `<location>/<torrent name>/` layout, so seeding from the library is not
-  preserved — use `--mode copy` or `--mode hardlink` for multi-file torrents.
-  The item's `client_actions[].detail` carries this note at runtime.
+- In client mode, `--mode move` is **single-file-torrent-only**. A multi-file
+  torrent is refused as a per-item `error` (governed by `--on-fail`) with a
+  reason recommending `--mode copy` or `--mode hardlink`: the client expects
+  its files under `<save_path>/<torrent name>/`, which the flat library layout
+  does not provide, so moving them would break seeding and trigger a
+  re-download loop. No placement or client mutation happens for a refused
+  candidate.
 - A **read failure on source files during placement** (e.g. permission denied
   on a candidate's file) is a per-item failure, not a run-level one: the item's
   disposition is `error` with the named cause, governed by
