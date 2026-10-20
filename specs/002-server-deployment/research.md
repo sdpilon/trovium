@@ -159,7 +159,9 @@ self-check uses `--help`, which is non-destructive and does not require config
 or client access. Because install and upgrade run from the bundle's ephemeral
 environment, promotion never replaces the running installer process. A same
 version and effective config short-circuits before staging; the `check` fast
-path and bundle cache are optimizations layered on top.
+path and bundle cache are optimizations layered on top. The no-op check also
+verifies command presence/executability; a missing command is a repair, not a
+no-op.
 
 **Alternatives considered**:
 
@@ -326,9 +328,12 @@ removal.
 ### D13. Linux is the release target; macOS is a development path
 
 **Decision**: Publish Linux x86_64 and aarch64 bundles using static musl `uv`
-and CPython standalone builds, which run on both glibc and musl hosts. Allow the
-deploy CLI and the local bundle builder to run on macOS for development and
-integration tests. Refuse unsupported platforms with a named error and remedy.
+and CPython standalone builds. The static builds are intended to work on both
+glibc and musl, but musl is not claimed until a release job exercises it;
+otherwise the bootstrap refuses musl hosts with `unsupported_platform` and a
+remedy. Allow the deploy CLI and the local bundle builder to run on macOS for
+development and integration tests. Refuse unsupported platforms with a named
+error and remedy.
 
 **Rationale**: The spec names Linux servers. Using static musl toolchain builds
 avoids a glibc/musl artifact split while the wheelhouse remains pure Python.
@@ -339,8 +344,8 @@ mismatched bundle from being installed.
 
 **Alternatives considered**:
 
-- Separate glibc and musl artifacts: doubles the release matrix without a
-  current need.
+- Separate glibc and musl artifacts: doubles the release matrix; deferred
+  unless musl verification fails or becomes a required target.
 - Promise macOS and Windows: extra release artifacts and service semantics
   outside the spec.
 - Linux only in tests: would make local integration testing impossible.

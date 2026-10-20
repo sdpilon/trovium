@@ -19,8 +19,9 @@ use the same layout, verification, and self-check path.
 
 Platforms: `linux-x86_64`, `linux-aarch64` (release targets);
 `darwin-x86_64`, `darwin-aarch64` (development/local bundles). Linux bundles use
-static musl `uv` and CPython builds so one artifact works on both glibc and musl
-hosts; the wheelhouse is pure Python.
+static musl `uv` and CPython builds. Release verification must exercise both
+glibc and musl before claiming both; until then, the bootstrap refuses musl
+hosts with `unsupported_platform` and a remedy. The wheelhouse is pure Python.
 
 ## Tarball layout
 

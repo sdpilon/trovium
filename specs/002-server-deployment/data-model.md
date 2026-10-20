@@ -84,7 +84,7 @@ behavior apply.
 
 - `schema_version` missing is treated as 0.
 - A known older schema is backed up to
-  `config.ini.bak.<UTC timestamp>` before any rewrite.
+  `config.ini.bak.<UTC timestamp>` with mode 0600 before any rewrite.
 - Known keys are added or normalized; valid existing values are preserved.
 - A newer schema is not rewritten. The report carries a warning with the
   detected and supported versions.

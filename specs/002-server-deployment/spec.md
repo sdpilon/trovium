@@ -15,6 +15,10 @@
 - Q: Should this deployment specification include unattended scheduling of pipeline runs? → A: No. User Story 4 is completely out of scope; the feature covers install, repeatable deployment, upgrade, and uninstall. Scheduling is removed from the spec.
 - Q: Does this feature target multiple servers or a single media library installation? → A: A single media library/installation per deployment. Multi-server fleet management is out of scope; retain unattended installation, repeatability, configuration files, run reports, idempotency, and offline installation.
 
+### Session 2026-10-20
+
+- Q: What should `--purge` do when no deployment record exists but a configuration file does? → A: Remove the configured configuration file only; without `--purge`, the operation remains a no-op. Media and source paths are never touched.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Install on a clean server with one command (Priority: P1)
@@ -159,6 +163,9 @@ untouched, and a second uninstall succeeds as a no-op.
 - What happens if the operator previously ran trovium from a development
   checkout? The deployment reports the separate installation and does not
   remove or modify the checkout.
+- What happens if `uninstall --purge` runs with no deployment record but a
+  config file exists? The configured config file is removed; media, source, and
+  client data are untouched.
 - What happens if the install location is not on the user's command path? The
   operator receives the exact corrective instruction; no shell profile is
   edited without explicit consent.
@@ -233,7 +240,9 @@ untouched, and a second uninstall succeeds as a no-op.
   preserve configuration and all media by default, and MUST remove
   configuration only when an explicit purge is requested. Uninstall on a server
   with no installation MUST succeed as a no-op and MUST report that nothing was
-  removed.
+  removed. When no deployment record exists but a configuration file does, an
+  explicit purge removes that configuration file; without purge, the operation
+  remains a no-op.
 - **FR-016**: The deployment MUST provide a status view reporting, at minimum,
   the active version, configuration location, and last self-check result.
   Status MUST complete without changing installation state.

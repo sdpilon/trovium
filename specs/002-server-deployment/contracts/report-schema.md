@@ -98,6 +98,9 @@ the operation.
 When a no-op also has warnings, `degraded` takes precedence over `noop` so the
 warnings remain visible; `actions` is still empty when nothing changed.
 
+An install may report `noop` only when the recorded commands exist and are
+executable. A missing command is a repair, not a no-op.
+
 `operation` is `upgrade` when an existing version was replaced. A same-version
 re-run is `operation: "install"` with `status: "noop"` and
 `previous_version` equal to `version`.

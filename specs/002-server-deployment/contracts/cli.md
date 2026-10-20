@@ -129,11 +129,12 @@ trovium-deploy status [--config PATH] [--json {compact,pretty}]
 trovium-deploy uninstall [--purge] [--json {compact,pretty}]
 ```
 
-`install` is the engine invoked by `install.sh`. Users normally use
-`install.sh` for install and upgrade; invoking `trovium-deploy install
---bundle` directly runs the same path when an extracted bundle is already
-available. Prefer `install.sh` because it runs the bundle's CLI in an ephemeral
-environment, so promotion never replaces the running installer.
+`install` is the engine invoked by `install.sh` from the bundle's ephemeral
+environment. The installed `trovium-deploy` MUST refuse `install` when it
+detects that its interpreter or script lives inside the active recorded
+`tool_dir`, because promotion could replace the running installer. It exits
+`install_failed` with a remedy to use `install.sh`. Direct install from an
+extracted bundle outside the active tool environment remains allowed.
 
 ### install options
 
@@ -147,6 +148,9 @@ environment, so promotion never replaces the running installer.
 | `--config PATH`           | path                 | no       | Config file to read or create                      |
 | `--force`                 | none                 | no       | Replace an unmanaged existing installation         |
 | `--json {compact,pretty}` | enum                 | no       | Report formatting                                  |
+
+A forced takeover of an unmanaged installation has no cached previous wheel;
+the report MUST state that automatic rollback is unavailable.
 
 ### check (internal fast path)
 
@@ -169,7 +173,8 @@ warnings, and the last self-check result.
 `uninstall` removes the commands and tool environment recorded by the
 deployment, plus the state record, cache, and private toolchain. It preserves
 the config file and all media unless `--purge` is supplied. A host with no
-record is a successful no-op.
+record is a successful no-op. If no record exists but a config file does,
+`--purge` removes that config file only; without `--purge`, nothing is removed.
 
 ### trovium-deploy examples
 
