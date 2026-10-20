@@ -9,12 +9,39 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, TextIO
 
 from trovium.record import JsonStyle
+
+_SECRET_VALUES: set[str] = set()
+REDACTED = "***"
+
+
+def register_secrets(values: Iterable[str | None]) -> None:
+    """Remember credential values so any report that includes them is redacted."""
+
+    for value in values:
+        if value and len(value) >= 3:
+            _SECRET_VALUES.add(value)
+
+
+def clear_secrets() -> None:
+    """Forget registered secrets (used between invocations in tests)."""
+
+    _SECRET_VALUES.clear()
+
+
+def redact_text(text: str) -> str:
+    """Replace every registered secret in ``text`` with a fixed marker."""
+
+    redacted = text
+    for value in sorted(_SECRET_VALUES, key=len, reverse=True):
+        redacted = redacted.replace(value, REDACTED)
+    return redacted
 
 
 class Operation(StrEnum):
@@ -207,11 +234,22 @@ def failure_report(operation: Operation, failure: DeployError) -> Report:
     return report.finish()
 
 
+def status_for(checks: Iterable[Check]) -> ReportStatus:
+    """Derive the top-level status: error > degraded > ok."""
+
+    items = list(checks)
+    if any(check.status is CheckStatus.FAIL for check in items):
+        return ReportStatus.ERROR
+    if any(check.status is CheckStatus.WARN for check in items):
+        return ReportStatus.DEGRADED
+    return ReportStatus.OK
+
+
 def render(report: Report, style: JsonStyle) -> str:
-    """Render a report; compact and pretty contain the same data."""
 
     indent = 2 if style is JsonStyle.PRETTY else None
-    return json.dumps(report.to_json(), indent=indent, ensure_ascii=False)
+    payload = json.dumps(report.to_json(), indent=indent, ensure_ascii=False)
+    return redact_text(payload)
 
 
 def emit(report: Report, style: JsonStyle, stream: TextIO | None = None) -> None:
@@ -226,16 +264,20 @@ def human_summary(report: Report, stream: TextIO | None = None) -> None:
     """Write a concise, secret-free summary to stderr."""
 
     err = sys.stderr if stream is None else stream
+    lines: list[str] = []
     if report.status is ReportStatus.ERROR and report.error is not None:
-        err.write(f"error: {report.error.message}\n")
-        err.write(f"remedy: {report.error.remedy}\n")
-        return
-    if report.status is ReportStatus.NOT_INSTALLED:
-        err.write("trovium is not installed\n")
-        return
-    version = report.version or "unknown"
-    err.write(f"trovium {version}: {report.status.value}\n")
-    if report.config_path:
-        err.write(f"config: {report.config_path}\n")
-    if report.next_steps:
-        err.write(f"next: {report.next_steps[0]}\n")
+        lines.append(f"error: {report.error.message}\n")
+        lines.append(f"remedy: {report.error.remedy}\n")
+    elif report.status is ReportStatus.NOT_INSTALLED:
+        lines.append("trovium is not installed\n")
+    else:
+        status_text = report.status.value
+        if report.version:
+            lines.append(f"trovium {report.version}: {status_text}\n")
+        else:
+            lines.append(f"trovium: {status_text}\n")
+        if report.config_path:
+            lines.append(f"config: {report.config_path}\n")
+        if report.next_steps:
+            lines.append(f"next: {report.next_steps[0]}\n")
+    err.write(redact_text("".join(lines)))

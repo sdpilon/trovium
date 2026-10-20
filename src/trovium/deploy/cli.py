@@ -18,6 +18,7 @@ from trovium.deploy.report import (
     failure_report,
     human_summary,
 )
+from trovium.deploy.state import read_record
 from trovium.record import JsonStyle
 
 EXIT_OK = 0
@@ -104,6 +105,24 @@ def _operation(command: str) -> Operation:
     return Operation.INSTALL
 
 
+def _failure_with_context(operation: Operation, failure: DeployError) -> Report:
+    """Name the failure and keep the active installation visible in the report."""
+
+    report = failure_report(operation, failure)
+    try:
+        record = read_record()
+    except DeployError:
+        return report
+    if record is not None:
+        report.version = record.version
+        report.previous_version = record.version
+        report.config_path = record.config_path
+        report.install_root = record.tool_dir
+        report.bin_dir = record.bin_dir
+        report.commands = list(record.commands)
+    return report
+
+
 def _dispatch(args: argparse.Namespace) -> Report | None:
     if args.command == "install":
         return install(
@@ -136,7 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         report = _dispatch(args)
     except DeployError as failure:
-        report = failure_report(operation, failure)
+        report = _failure_with_context(operation, failure)
         emit(report, _json_style(getattr(args, "json", JsonStyle.PRETTY.value)))
         human_summary(report)
         return failure.exit_code
@@ -146,7 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"unexpected deployment failure: {error}",
             "Inspect the error and retry; report a bug if it recurs.",
         )
-        report = failure_report(operation, unexpected)
+        report = _failure_with_context(operation, unexpected)
         emit(report, _json_style(getattr(args, "json", JsonStyle.PRETTY.value)))
         human_summary(report)
         return EXIT_INSTALL

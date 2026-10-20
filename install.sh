@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # trovium bootstrap: resolve, verify, extract a release bundle, then hand
 # install/status/uninstall to the typed trovium-deploy CLI.
-set -euo pipefail
+set -Eeuo pipefail
 
 RELEASE_BASE="${TROVIUM_RELEASE_BASE_URL:-https://github.com/sdpilon/trovium/releases}"
 MODE="install"
@@ -13,6 +13,8 @@ TMP_DIR=""
 BUNDLE_DIR=""
 BUNDLE_FILE=""
 MODE_ARGS=()
+CONFIG_ARGS=0
+REPORT_EMITTED=0
 
 usage() {
     cat <<'EOF'
@@ -49,9 +51,56 @@ json_error() {
 
 die() {
     local code="$1" message="$2" remedy="$3" status="${4:-3}"
+    REPORT_EMITTED=1
     json_error "$MODE" "$code" "$message" "$remedy"
     printf 'error: %s\nremedy: %s\n' "$message" "$remedy" >&2
     exit "$status"
+}
+
+# shellcheck disable=SC2329  # invoked indirectly by trap
+on_unexpected_failure() {
+    local status=$?
+    if [ "$REPORT_EMITTED" != "1" ]; then
+        REPORT_EMITTED=1
+        json_error "$MODE" "internal" \
+            "installer aborted unexpectedly (exit $status)" \
+            "Re-run with --help, check the prerequisites, and report this failure."
+    fi
+    exit "$status"
+}
+
+validate_release_base() {
+    case "$RELEASE_BASE" in
+        http://*|https://*) ;;
+        *)
+            die "misuse" "--release-base-url must be an absolute http or https URL" \
+                "Pass a URL such as https://github.com/sdpilon/trovium/releases." 2
+            ;;
+    esac
+    case "${RELEASE_BASE#*://}" in
+        *@*)
+            die "misuse" "--release-base-url must not contain credentials" \
+                "Remove the userinfo from the URL before retrying." 2
+            ;;
+    esac
+}
+
+check_current_install() {
+    local requested="$1" candidate
+    if [ "$CONFIG_ARGS" != "0" ]; then
+        return 1
+    fi
+    candidate="${TROVIUM_BIN_DIR:-$HOME/.local/bin}/trovium-deploy"
+    if [ ! -x "$candidate" ]; then
+        candidate="$(command -v trovium-deploy || true)"
+    fi
+    if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
+        return 1
+    fi
+    if "$candidate" check --version "$requested"; then
+        exit 0
+    fi
+    return 1
 }
 
 need_command() {
@@ -169,6 +218,8 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+# shellcheck disable=SC2329  # invoked indirectly by trap
+trap on_unexpected_failure ERR
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -180,9 +231,17 @@ while [ $# -gt 0 ]; do
         --uninstall) MODE="uninstall"; shift ;;
         --purge) PURGE="1"; shift ;;
         -h|--help) usage; exit 0 ;;
-        --non-interactive|--force)
+        --non-interactive)
             MODE_ARGS+=("$1"); shift ;;
-        --library-root|--source|--client-url|--config|--json)
+        --force)
+            CONFIG_ARGS=1; MODE_ARGS+=("$1"); shift ;;
+        --library-root|--source|--client-url|--config)
+            CONFIG_ARGS=1
+            if [ $# -lt 2 ]; then
+                die "misuse" "option $1 needs a value" "Check install.sh --help." 2
+            fi
+            MODE_ARGS+=("$1" "$2"); shift 2 ;;
+        --json)
             if [ $# -lt 2 ]; then
                 die "misuse" "option $1 needs a value" "Check install.sh --help." 2
             fi
@@ -199,6 +258,7 @@ fi
 if [ "$PURGE" = "1" ] && [ "$MODE" != "uninstall" ]; then
     die "misuse" "--purge requires --uninstall" "Run install.sh --uninstall --purge." 2
 fi
+validate_release_base
 if [ "$MODE" != "install" ] && [ ${#MODE_ARGS[@]} -gt 0 ]; then
     for arg in "${MODE_ARGS[@]}"; do
         case "$arg" in
@@ -239,12 +299,21 @@ if [ "$system" = "linux" ] && { [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)"
 fi
 platform="$system-$arch"
 
+if [ "$MODE" = "install" ] && [ -z "$BUNDLE" ] && [ "$CONFIG_ARGS" = "0" ]; then
+    if [ -z "$VERSION" ]; then
+        VERSION="$(download_text "$RELEASE_BASE/releases/latest/download/VERSION" | tr -d '[:space:]' || true)"
+    fi
+    if [ -n "$VERSION" ]; then
+        check_current_install "$VERSION"
+    fi
+fi
+
 resolve_bundle "$platform"
 extract_bundle
 
 uv_path="${TROVIUM_TEST_UV:-}"
 python_path="${TROVIUM_TEST_PYTHON:-}"
-if [ -z "$uv_path" ]; then
+if [ -z "$uv_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
     uv_path="$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'uv-*' | head -n 1)"
 fi
 if [ -z "$uv_path" ]; then
@@ -254,7 +323,7 @@ if [ -z "$uv_path" ]; then
     die "missing_prerequisite" "no uv toolchain is available" \
         "Download a complete release bundle or install uv." 3
 fi
-if [ -z "$python_path" ]; then
+if [ -z "$python_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
     python_path="$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'python-*.tar.gz' | head -n 1)"
 fi
 if [ -z "$python_path" ]; then
@@ -297,10 +366,27 @@ if [ "${#MODE_ARGS[@]}" -gt 0 ]; then
     deploy_args+=("${MODE_ARGS[@]}")
 fi
 
+trap - ERR
 set +e
+deploy_out="$TMP_DIR/deploy.out"
+deploy_err="$TMP_DIR/deploy.err"
 "$uv_path" run --no-project --python "$python_path" \
     --no-index --find-links "$BUNDLE_DIR/wheelhouse" \
-    --with "$wheel" trovium-deploy "${deploy_args[@]}"
+    --with "$wheel" trovium-deploy "${deploy_args[@]}" \
+    >"$deploy_out" 2>"$deploy_err"
 status=$?
 set -e
+trap on_unexpected_failure ERR
+cat "$deploy_out"
+cat "$deploy_err" >&2
+if [ "$status" -ne 0 ] && [ ! -s "$deploy_out" ]; then
+    REPORT_EMITTED=1
+    cause="$(head -n 1 "$deploy_err" | cut -c1-200)"
+    if [ -z "$cause" ]; then
+        cause="the bundled deploy CLI could not start (exit $status)"
+    fi
+    json_error "$MODE" "bundle_invalid" "$cause" \
+        "Download the release bundle again and verify its .sha256 sidecar."
+    exit 4
+fi
 exit "$status"

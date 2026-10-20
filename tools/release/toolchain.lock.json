@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "uv": {
+    "version": "0.12.19",
+    "release_base": "https://github.com/astral-sh/uv/releases/download/0.12.19",
+    "assets": {
+      "linux-x86_64": {
+        "name": "uv-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "db7278c9f57981338fddff1fb250e11964bc0a4fafcb9eed8303fdb117dc067b"
+      },
+      "linux-aarch64": {
+        "name": "uv-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "ad8d8448a2ff642ba62c2f684d7dd22a03f8eb3fc9918c2c3e8ec975f4ed6710"
+      }
+    }
+  },
+  "python": {
+    "version": "3.13.16",
+    "build": "20261013",
+    "release_base": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013",
+    "assets": {
+      "linux-x86_64": {
+        "name": "cpython-3.13.16+20261013-x86_64-unknown-linux-musl-install_only_stripped.tar.gz",
+        "sha256": "a177ce931ddc616c0e76eebc6a583196739dc704d47af853f5958cb95b2b1c96"
+      },
+      "linux-aarch64": {
+        "name": "cpython-3.13.16+20261013-aarch64-unknown-linux-musl-install_only_stripped.tar.gz",
+        "sha256": "9f503edbbfe384c9bf770d99ce787f7aea60bbc6a96ffb3b5933f72c9e71fb6f"
+      }
+    }
+  },
+  "licenses": {
+    "uv": [
+      "https://raw.githubusercontent.com/astral-sh/uv/0.12.19/LICENSE-APACHE",
+      "https://raw.githubusercontent.com/astral-sh/uv/0.12.19/LICENSE-MIT"
+    ],
+    "python": "https://raw.githubusercontent.com/python/cpython/v3.13.16/LICENSE"
+  }
+}

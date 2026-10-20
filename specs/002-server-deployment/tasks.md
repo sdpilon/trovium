@@ -41,9 +41,9 @@
 - [x] T001 Run `uv sync` and `scripts/check.sh` to confirm the baseline is green before any change (constitution XIII/XXVI)
 - [x] T002 [P] Register `trovium-deploy = "trovium.deploy.cli:main"` in `[project.scripts]` in `pyproject.toml`; update `tests/unit/test_dependency_budget.py` to assert both console scripts and that `[project].dependencies` is exactly `["httpx>=0.27"]`
 - [x] T003 [P] Create `src/trovium/deploy/__init__.py`, empty modules `src/trovium/deploy/{cli,installer,bundle,paths,report,selfcheck,state,uv}.py`, and test directories `tests/unit/deploy/`, `tests/contract/deploy/`, `tests/integration/deploy/`, `tests/fixtures/deploy/`
-- [ ] T004 [P] Create `tools/release/toolchain.lock.json` with the pinned `uv` and CPython 3.13 artifact versions and SHA-256 digests per release platform, and `tools/release/README.md` documenting the lock format and refresh procedure
+- [x] T004 [P] Create `tools/release/toolchain.lock.json` with the pinned `uv` and CPython 3.13 artifact versions and SHA-256 digests per release platform, and `tools/release/README.md` documenting the lock format and refresh procedure
 - [x] T005 [P] Create `install.sh` at repository root with a Bash 3.2+ shebang, `set -euo pipefail`, usage/options parsing, platform normalization, a `json_error` helper, and shellcheck-clean structure; `json_error` MUST emit the full schema in `contracts/report-schema.md`, not a reduced bootstrap-only shape; do not implement the install flow yet
-- [ ] T006 [P] Create `tests/fixtures/deploy/fake_uv.sh` and a skeleton `tests/fixtures/deploy/accept_lib.sh` for temporary XDG homes, bundle caching, and fake uv behavior; make both executable and shellcheck-clean
+- [x] T006 [P] Create `tests/fixtures/deploy/fake_uv.sh` and a skeleton `tests/fixtures/deploy/accept_lib.sh` for temporary XDG homes, bundle caching, and fake uv behavior; make both executable and shellcheck-clean
 
 **Checkpoint**: package entry point, fixture skeleton, and release-tooling lock exist
 
@@ -73,7 +73,7 @@
 - [x] T022 [P] Implement `tools/release/build_bundle.py`: build the wheel, hashed wheelhouse from the runtime lock, platform bundle directory, manifest, `VERSION`, tarball, `.sha256`, and latest aliases; support `--local`/`--fast` mode for tests using the host uv/Python and a cached wheelhouse; stage a temporary source tree for `--version` overrides
 - [x] T023 [P] Add unit tests in `tools/release/`-adjacent `tests/unit/deploy/test_release_builder.py` for manifest digests, version staging, tar layout, checksum sidecars, and refusal of missing wheel dependencies
 - [x] T024 [P] Add `tests/conftest.py` isolation so every test sets `HOME`, `TROVIUM_CONFIG_FILE`, `TROVIUM_STATE_HOME`, `TROVIUM_DATA_HOME`, `TROVIUM_CACHE_HOME`, and `TROVIUM_BIN_DIR` to temporary paths
-- [ ] T025 [P] Complete `tests/fixtures/deploy/accept_lib.sh`: `accept_init` creates an isolated temp home/library/source and exports all `TROVIUM_*` paths; `accept_bundle [version]` builds or reuses a cached local test bundle with the host toolchain; `accept_broken_bundle` echoes the broken-bundle fixture path; `accept_inventory` hashes media state; also create `tests/fixtures/deploy/broken-bundle.tar.gz` and its `.sha256` for rollback acceptance; ensure functions are safe to source from `bash -e` accept blocks
+- [x] T025 [P] Complete `tests/fixtures/deploy/accept_lib.sh`: `accept_init` creates an isolated temp home/library/source and exports all `TROVIUM_*` paths; `accept_bundle [version]` builds or reuses a cached local test bundle with the host toolchain; `accept_broken_bundle` echoes the broken-bundle fixture path; `accept_inventory` hashes media state; also create `tests/fixtures/deploy/broken-bundle.tar.gz` and its `.sha256` for rollback acceptance; ensure functions are safe to source from `bash -e` accept blocks
 
 **Checkpoint**: config, report, state, paths, bundle, uv, selfcheck, CLI skeleton, and release builder are typed, tested, and green
 
@@ -89,10 +89,10 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation.**
 
-- [ ] T026 [P] [US1] Contract test in `tests/contract/deploy/test_install_cli.py`: `install.sh` and `trovium-deploy install` options, required `--bundle`, misuse exit 2, local bundle success, report schema, `--json` compact/pretty parity, and no credential values; include an early bootstrap failure (missing prerequisite or unsupported platform) and assert it emits the full report schema; cover commands-present/no-record refusal, `--force` takeover, and direct install from the active tool dir being refused with `install_failed`
-- [ ] T027 [P] [US1] Integration test in `tests/integration/deploy/test_install_local.py`: install a locally built bundle into a temp HOME, verify private tool dirs, both console scripts, config mode 0600, source/library values, record fields, and a passing self-check; include a supported/unsupported preflight matrix (`-k matrix`) for SC-002; a second identical install returns `noop` with empty actions and an unchanged config (US1 acceptance 5); add `tests/integration/deploy/test_online_release.py` with a local HTTP fixture that serves `releases/latest/download/VERSION` and the versioned asset under `download/v0.1.0/`; run once without `--version` (default latest) and once with `--version 0.1.0`, asserting both installs produce the same version/config/self-check result (SC-001 online path); a missing or non-executable recorded command with an unchanged version/config forces repair rather than `noop`; cover `--force` adopting an unmanaged installation and the report warning that rollback is unavailable; cover direct install from the active tool dir leaving the installation unchanged; a two-user case installs under two separate HOME/XDG/bin roots and asserts neither install, upgrade, nor uninstall changes the other's commands, config, or state; run the matrix over at least five clean positive cases (disk source, client config, config-file non-interactive, offline bundle, and a second clean HOME/XDG) plus unsupported-platform and missing-prerequisite negative cases, and record pass/fail counts; keep local/matrix/no-op/repair cases in `test_install_local.py`, online and pinned/latest cases in `test_online_release.py`, and `--force`, direct-install, and two-user cases in `test_isolation.py`
+- [x] T026 [P] [US1] Contract test in `tests/contract/deploy/test_install_cli.py`: `install.sh` and `trovium-deploy install` options, required `--bundle`, misuse exit 2, local bundle success, report schema, `--json` compact/pretty parity, and no credential values; include an early bootstrap failure (missing prerequisite or unsupported platform) and assert it emits the full report schema; cover commands-present/no-record refusal, `--force` takeover, and direct install from the active tool dir being refused with `install_failed`
+- [x] T027 [P] [US1] Integration test in `tests/integration/deploy/test_install_local.py`: install a locally built bundle into a temp HOME, verify private tool dirs, both console scripts, config mode 0600, source/library values, record fields, and a passing self-check; include a supported/unsupported preflight matrix (`-k matrix`) for SC-002; a second identical install returns `noop` with empty actions and an unchanged config (US1 acceptance 5); add `tests/integration/deploy/test_online_release.py` with a local HTTP fixture that serves `releases/latest/download/VERSION` and the versioned asset under `download/v0.1.0/`; run once without `--version` (default latest) and once with `--version 0.1.0`, asserting both installs produce the same version/config/self-check result (SC-001 online path); a missing or non-executable recorded command with an unchanged version/config forces repair rather than `noop`; cover `--force` adopting an unmanaged installation and the report warning that rollback is unavailable; cover direct install from the active tool dir leaving the installation unchanged; a two-user case installs under two separate HOME/XDG/bin roots and asserts neither install, upgrade, nor uninstall changes the other's commands, config, or state; run the matrix over at least five clean positive cases (disk source, client config, config-file non-interactive, offline bundle, and a second clean HOME/XDG) plus unsupported-platform and missing-prerequisite negative cases, and record pass/fail counts; keep local/matrix/no-op/repair cases in `test_install_local.py`, online and pinned/latest cases in `test_online_release.py`, and `--force`, direct-install, and two-user cases in `test_isolation.py`
 - [x] T028 [P] [US1] Unit test in `tests/unit/deploy/test_config_install.py`: generated config includes `[library]`, `[source] mode=disk|client`, `[ingest]` defaults, `schema_version = 1`, and is not written outside the selected path
-- [ ] T029 [P] [US1] Integration test in `tests/integration/deploy/test_install_selfcheck.py`: a staged entry point whose `--help` fails prevents promotion, names the command in the report, and leaves the active installation unchanged
+- [x] T029 [P] [US1] Integration test in `tests/integration/deploy/test_install_selfcheck.py`: a staged entry point whose `--help` fails prevents promotion, names the command in the report, and leaves the active installation unchanged
 
 ### Implementation for User Story 1
 
@@ -107,7 +107,7 @@
 - [x] T038 [US1] Add `.github/workflows/release.yml`: tag-driven `v*` workflow. Before building, set up the same gate tooling as `.github/workflows/gates.yml` (checkout, uv, Node, jq, shellcheck, Prettier, markdownlint) and run `UV_FROZEN=1 bash scripts/check.sh`. Build Linux x86_64/aarch64 bundles, upload `VERSION`, `install.sh`, versioned/latest assets and `.sha256` sidecars. Grant `contents: write` only to the release job.
 - [x] T039 [US1] Wire `tools/release/build_bundle.py` into the release workflow: download pinned uv/CPython from `tools/release/toolchain.lock.json`, verify published checksums, build the hashed wheelhouse, write the manifest, and produce reproducible tarballs
 - [x] T040 [US1] Document the one-command install, local bundle, generated config, status, and PATH remedy in `README.md`; link to `specs/002-server-deployment/contracts/`
-- [ ] T041 [US1] Execute `specs/002-server-deployment/quickstart.md` Scenarios 1, 1b, 2, and 3 against the implementation; record the observed results and fix red paths before continuing
+- [x] T041 [US1] Execute `specs/002-server-deployment/quickstart.md` Scenarios 1, 1b, 2, and 3 against the implementation; record the observed results and fix red paths before continuing
 - [x] T042 [US1] Run `scripts/check.sh` and confirm the US1 slice is green across ruff, mypy, pytest, Prettier, markdownlint, and shellcheck
 
 **Checkpoint**: US1 is a working MVP from a local bundle; online release packaging is wired but may not have a published release yet
@@ -122,13 +122,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T043 [P] [US2] Contract test in `tests/contract/deploy/test_unattended.py`: no-TTY behavior, `--non-interactive` missing-input list, config-file install, CLI > env > config precedence, and prompt fallback via `/dev/tty`
-- [ ] T044 [P] [US2] Integration test in `tests/integration/deploy/test_repeatable.py`: focus on the US2 fast path and cache — `trovium-deploy check --version` avoids the bundle download, bundle-cache reuse works, and the no-op completes under 30 seconds; the baseline same-version no-op is covered by T027
-- [ ] T045 [P] [US2] Integration test in `tests/integration/deploy/test_offline.py`: local bundle install with `UV_OFFLINE=1` and unreachable proxies, no network lookup, self-check and status pass
-- [ ] T046 [P] [US2] Contract test in `tests/contract/deploy/test_bundle_refusal.py`: tampered wheel, bad outer checksum, wrong platform, wrong version, and traversal path all exit 4 with `bundle_integrity`/`bundle_invalid` and change nothing
-- [ ] T047 [P] [US2] Contract test in `tests/contract/deploy/test_lock.py`: concurrent install/upgrade attempts serialize or one exits 6 with a named lock error and no mixed-version state; two distinct user roots use separate locks and do not block or alter each other
-- [ ] T048 [P] [US2] Unit test in `tests/unit/deploy/test_ingest_config.py`: ingest config fallbacks for library/source/client URL, enums, CLI overrides, missing explicit config, and credential env names
-- [ ] T049 [P] [US2] Contract test in `tests/contract/deploy/test_run_report.py`: unattended install report includes ordered actions, outcomes, version, config path, no prompts, and redacted secrets
+- [x] T043 [P] [US2] Contract test in `tests/contract/deploy/test_unattended.py`: no-TTY behavior, `--non-interactive` missing-input list, config-file install, CLI > env > config precedence, and prompt fallback via `/dev/tty`
+- [x] T044 [P] [US2] Integration test in `tests/integration/deploy/test_repeatable.py`: focus on the US2 fast path and cache — `trovium-deploy check --version` avoids the bundle download, bundle-cache reuse works, and the no-op completes under 30 seconds; the baseline same-version no-op is covered by T027
+- [x] T045 [P] [US2] Integration test in `tests/integration/deploy/test_offline.py`: local bundle install with `UV_OFFLINE=1` and unreachable proxies, no network lookup, self-check and status pass
+- [x] T046 [P] [US2] Contract test in `tests/contract/deploy/test_bundle_refusal.py`: tampered wheel, bad outer checksum, wrong platform, wrong version, and traversal path all exit 4 with `bundle_integrity`/`bundle_invalid` and change nothing
+- [x] T047 [P] [US2] Contract test in `tests/contract/deploy/test_lock.py`: concurrent install/upgrade attempts serialize or one exits 6 with a named lock error and no mixed-version state; two distinct user roots use separate locks and do not block or alter each other
+- [x] T048 [P] [US2] Unit test in `tests/unit/deploy/test_ingest_config.py`: ingest config fallbacks for library/source/client URL, enums, CLI overrides, missing explicit config, and credential env names
+- [x] T049 [P] [US2] Contract test in `tests/contract/deploy/test_run_report.py`: unattended install report includes ordered actions, outcomes, version, config path, no prompts, and redacted secrets
 
 ### Implementation for User Story 2
 
@@ -143,7 +143,7 @@
 - [x] T058 [US2] Implement `trovium-ingest --config` in `src/trovium/cli.py`: load the shared config, apply precedence, resolve `[source]` mode/path/client_url, keep existing flags authoritative, and preserve existing exit codes/misuse rules
 - [x] T059 [US2] Add regression tests in `tests/contract/test_cli_contract.py` and `tests/integration/test_disk_ingest.py` proving existing ingest flag behavior is unchanged when no config exists
 - [x] T060 [US2] Document non-interactive install, config-file reuse, offline installation, and config precedence in `README.md` and `docs/` if present
-- [ ] T061 [US2] Execute `specs/002-server-deployment/quickstart.md` Scenarios 4, 5, and 9; record results and fix red paths
+- [x] T061 [US2] Execute `specs/002-server-deployment/quickstart.md` Scenarios 4, 5, and 9; record results and fix red paths
 - [x] T062 [US2] Run `scripts/check.sh` and confirm the US2 slice is green
 
 **Checkpoint**: unattended, repeatable, offline, integrity-safe installation works independently of upgrade/uninstall
@@ -158,11 +158,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T063 [P] [US3] Contract test in `tests/contract/deploy/test_upgrade.py`: upgrade operation/version fields, config preservation, same-command upgrade, downgrade by pinned bundle, and no partial activation on self-check failure
-- [ ] T064 [P] [US3] Integration test in `tests/integration/deploy/test_upgrade.py`: 0.1.0 → 0.2.0 upgrade with a customized config, byte-identical config, new commands, preserved media inventory, and a `-k media_integrity` case covering install/upgrade/downgrade/uninstall inventories (SC-005)
-- [ ] T065 [P] [US3] Contract test in `tests/contract/deploy/test_uninstall.py`: uninstall/purge/no-op statuses, config preserved by default, purge removes config only, commands/symlinks removed, media untouched; cover no-record no-op and no-record `--purge` removing only the config
-- [ ] T066 [P] [US3] Integration test in `tests/integration/deploy/test_rollback.py`: a broken staged self-check leaves the previous version active or restores it from cache, the failure names the command, and `-k recovery` parametrizes at least five interruption points: (1) after bundle verification but before toolchain copy, (2) after toolchain copy but before staging install, (3) after staging install but before the staged self-check, (4) after the staged self-check but before promotion, (5) after promotion but before the record write. Each case asserts rerun convergence and no false success (SC-006).
-- [ ] T067 [P] [US3] Unit test in `tests/unit/deploy/test_state.py`: cached wheel/previous-version record updates, rollback record invariants, interrupted-promotion recovery, and atomic record writes that leave a recoverable state if interrupted before `os.replace`
+- [x] T063 [P] [US3] Contract test in `tests/contract/deploy/test_upgrade.py`: upgrade operation/version fields, config preservation, same-command upgrade, downgrade by pinned bundle, and no partial activation on self-check failure
+- [x] T064 [P] [US3] Integration test in `tests/integration/deploy/test_upgrade.py`: 0.1.0 → 0.2.0 upgrade with a customized config, byte-identical config, new commands, preserved media inventory, and a `-k media_integrity` case covering install/upgrade/downgrade/uninstall inventories (SC-005)
+- [x] T065 [P] [US3] Contract test in `tests/contract/deploy/test_uninstall.py`: uninstall/purge/no-op statuses, config preserved by default, purge removes config only, commands/symlinks removed, media untouched; cover no-record no-op and no-record `--purge` removing only the config
+- [x] T066 [P] [US3] Integration test in `tests/integration/deploy/test_rollback.py`: a broken staged self-check leaves the previous version active or restores it from cache, the failure names the command, and `-k recovery` parametrizes at least five interruption points: (1) after bundle verification but before toolchain copy, (2) after toolchain copy but before staging install, (3) after staging install but before the staged self-check, (4) after the staged self-check but before promotion, (5) after promotion but before the record write. Each case asserts rerun convergence and no false success (SC-006).
+- [x] T067 [P] [US3] Unit test in `tests/unit/deploy/test_state.py`: cached wheel/previous-version record updates, rollback record invariants, interrupted-promotion recovery, and atomic record writes that leave a recoverable state if interrupted before `os.replace`
 
 ### Implementation for User Story 3
 
@@ -174,9 +174,9 @@
 - [x] T073 [US3] Implement the uninstall fallback in `src/trovium/deploy/installer.py`/`paths.py`: if the recorded uv is missing, remove only recorded bin symlinks pointing into the recorded tool dir and the recorded tool dir; refuse to touch anything else
 - [x] T074 [US3] Implement `--purge`: remove the recorded config file when a record exists; when no record exists, remove only the configured/default config file (`TROVIUM_CONFIG_FILE` or the XDG default) if present. Never remove media, source, or client data. Report `purge_config` only when a file was removed.
 - [x] T075 [US3] Implement `install.sh --status` and `install.sh --uninstall [--purge]`: resolve a bundle, invoke the bundle's `trovium-deploy` in an ephemeral uv environment, and keep stdout JSON-only for the no-op/removal report
-- [ ] T076 [US3] Verify reboot/persistence behavior in `src/trovium/deploy/paths.py`/docs: commands in the user bin dir, no daemon, no login dependency, and status remediation for a missing PATH entry
+- [x] T076 [US3] Verify reboot/persistence behavior in `src/trovium/deploy/paths.py`/docs: commands in the user bin dir, no daemon, no login dependency, and status remediation for a missing PATH entry
 - [x] T077 [US3] Document upgrade, dirty-config handling, rollback, uninstall, and purge in `README.md`; warn that purge never touches media
-- [ ] T078 [US3] Execute `specs/002-server-deployment/quickstart.md` Scenarios 6–8, 10, and 11; record results and fix red paths
+- [x] T078 [US3] Execute `specs/002-server-deployment/quickstart.md` Scenarios 6–8, 10, and 11; record results and fix red paths
 - [x] T079 [US3] Run `scripts/check.sh` and confirm the US3 slice is green
 
 **Checkpoint**: all three user stories work independently; upgrade/uninstall preserve config and media
@@ -187,11 +187,11 @@
 
 **Purpose**: Final hardening and documentation that spans the stories.
 
-- [ ] T080 [P] Security audit `src/trovium/config.py`, `src/trovium/deploy/report.py`, `install.sh`, and reports for secret leakage; add regression tests for URLs with userinfo, credential env names, and error paths
+- [x] T080 [P] Security audit `src/trovium/config.py`, `src/trovium/deploy/report.py`, `install.sh`, and reports for secret leakage; add regression tests for URLs with userinfo, credential env names, and error paths
 - [x] T081 [P] Re-run/update `tests/unit/test_dependency_budget.py` to prove `httpx` remains the only runtime dependency and both console scripts are registered
 - [x] T082 [P] Update `README.md` with a concise install/upgrade/status/uninstall reference, offline bundle instructions, config precedence, and the single-library/no-scheduling boundary
 - [x] T083 [P] Clean up dead code, naming, and error messages in `src/trovium/deploy/`, `src/trovium/config.py`, `install.sh`, and `tools/release/`; keep mypy strict clean
-- [ ] T084 Execute all `specs/002-server-deployment/quickstart.md` scenarios in order on the development host; record pass/fail and timings
+- [x] T084 Execute all `specs/002-server-deployment/quickstart.md` scenarios in order on the development host; record pass/fail and timings
 - [ ] T085 Run `scripts/check.sh` plus timing checks for SC-001 (install), SC-003 (no-op), SC-009 (uninstall), and SC-012 (status); record the clean-runner online install duration against the 5-minute SC-001 target. The spec-gate accept blocks run under a 30-second watchdog, so T089 is a functional check; the 5-minute metric is recorded here. Record the SC-002 matrix pass counts alongside the timings.
 - [ ] T086 Verify the release bundle contains no new runtime Python dependency, includes uv/Python licenses, and that a local bundle installs with `UV_OFFLINE=1`
 - [ ] T087 Perform a Linux smoke test on glibc and, if available, musl/Alpine. If musl is not verified, confirm the installer refuses it with `unsupported_platform` and document the limitation in `README.md`; do not claim live musl verification unless it was performed.
@@ -203,7 +203,7 @@
 
 **Purpose**: Encode SC-001–SC-010 and SC-012 as the fenced `accept` blocks the spec-conformance gate executes. Each block uses `tests/fixtures/deploy/accept_lib.sh` to create an isolated temp home and a cached local bundle, then drives `install.sh`/`trovium-deploy` rather than internal functions. SC-011 was retired with scheduling.
 
-- [ ] T089 SC-001: one install command creates a working installation via `install.sh`
+- [x] T089 SC-001: one install command creates a working installation via `install.sh`
 
 ```accept
 # verifies: SC-001 — one install command creates a working installation
@@ -219,14 +219,14 @@ test -x "$TROVIUM_BIN_DIR/trovium-ingest"
 "$TROVIUM_BIN_DIR/trovium-ingest" --help >/dev/null
 ```
 
-- [ ] T090 SC-002: first-attempt success across the supported preflight matrix via `tests/integration/deploy/test_install_local.py`
+- [x] T090 SC-002: first-attempt success across the supported preflight matrix via `tests/integration/deploy/test_install_local.py`
 
 ```accept
 # verifies: SC-002 — supported preflight matrix succeeds and failures name a cause before changes
 uv run --quiet pytest -q -p no:cacheprovider tests/integration/deploy/test_install_local.py -k matrix
 ```
 
-- [ ] T091 SC-003: identical re-run is a fast no-op via `install.sh`
+- [x] T091 SC-003: identical re-run is a fast no-op via `install.sh`
 
 ```accept
 # verifies: SC-003 — an identical re-run makes zero changes in under 30 seconds
@@ -246,7 +246,7 @@ jq -e '.status == "noop" and (.actions | length) == 0' "$ACCEPT_ROOT/second.json
 test "$before" = "$(cksum "$TROVIUM_CONFIG_FILE")"
 ```
 
-- [ ] T092 SC-004: unattended install emits a run report via `install.sh`
+- [x] T092 SC-004: unattended install emits a run report via `install.sh`
 
 ```accept
 # verifies: SC-004 — unattended install completes without prompts and emits a run report
@@ -260,21 +260,21 @@ jq -e '(.status == "ok" or .status == "degraded") and (.actions | length) > 0' "
 jq -e '.config_path != null and .version != null' "$ACCEPT_ROOT/install.json" >/dev/null
 ```
 
-- [ ] T093 SC-005: install/upgrade/downgrade/uninstall never modify media via `tests/integration/deploy/test_upgrade.py`
+- [x] T093 SC-005: install/upgrade/downgrade/uninstall never modify media via `tests/integration/deploy/test_upgrade.py`
 
 ```accept
 # verifies: SC-005 — no deployment operation modifies or deletes media files
 uv run --quiet pytest -q -p no:cacheprovider tests/integration/deploy/test_upgrade.py -k media_integrity
 ```
 
-- [ ] T094 SC-006: interrupted operations recover without false success via `tests/integration/deploy/test_rollback.py`
+- [x] T094 SC-006: interrupted operations recover without false success via `tests/integration/deploy/test_rollback.py`
 
 ```accept
 # verifies: SC-006 — interrupted operations recover on rerun and never report false success
 uv run --quiet pytest -q -p no:cacheprovider tests/integration/deploy/test_rollback.py -k recovery
 ```
 
-- [ ] T095 SC-007: secrets never appear in output via `install.sh` and `trovium-deploy status`
+- [x] T095 SC-007: secrets never appear in output via `install.sh` and `trovium-deploy status`
 
 ```accept
 # verifies: SC-007 — secrets never appear in reports, config, or logs
@@ -300,7 +300,7 @@ done
 unset TROVIUM_CLIENT_USERNAME TROVIUM_CLIENT_PASSWORD
 ```
 
-- [ ] T096 SC-008: upgrade preserves config and failed upgrade rolls back via `install.sh`
+- [x] T096 SC-008: upgrade preserves config and failed upgrade rolls back via `install.sh`
 
 ```accept
 # verifies: SC-008 — upgrade preserves config and a failed upgrade keeps the previous version
@@ -326,7 +326,7 @@ test "$rc" -ne 0
 "$TROVIUM_BIN_DIR/trovium-deploy" status --json compact | jq -e '.version == "0.2.0"' >/dev/null
 ```
 
-- [ ] T097 SC-009: uninstall removes commands and preserves config/media via `trovium-deploy uninstall`
+- [x] T097 SC-009: uninstall removes commands and preserves config/media via `trovium-deploy uninstall`
 
 ```accept
 # verifies: SC-009 — uninstall removes commands, preserves config/media, and purge removes config only
@@ -350,7 +350,7 @@ test ! -e "$TROVIUM_CONFIG_FILE"
 test "$before" = "$(cksum "$ACCEPT_LIBRARY/keep.me")"
 ```
 
-- [ ] T098 SC-010: offline install succeeds via `install.sh`
+- [x] T098 SC-010: offline install succeeds via `install.sh`
 
 ```accept
 # verifies: SC-010 — a local bundle installs with outbound network access disabled
@@ -365,7 +365,7 @@ jq -e '.status == "ok" or .status == "degraded"' "$ACCEPT_ROOT/install.json" >/d
 "$TROVIUM_BIN_DIR/trovium-ingest" --help >/dev/null
 ```
 
-- [ ] T099 SC-012: status is fast and read-only via `trovium-deploy status`
+- [x] T099 SC-012: status is fast and read-only via `trovium-deploy status`
 
 ```accept
 # verifies: SC-012 — status reports version/config/self-check in under 5 seconds without changing state
@@ -473,3 +473,24 @@ Task: "Implement bundle in src/trovium/deploy/bundle.py"
 - Do not claim live Linux verification from macOS-only tests; record the exercised surfaces honestly.
 - Commit after each logical group; keep `scripts/check.sh` green at every checkpoint.
 - Do not weaken gates or edit `.specify/gates/policy.json`.
+
+## Phase 8: Convergence
+
+- [x] T100 CRITICAL: Refuse `--release-base-url` values that are not absolute `http`/`https` URLs or that carry userinfo in `install.sh`, and redact URLs from bootstrap error output, with regression tests in `tests/contract/deploy/test_install_cli.py`, per FR-011 / Constitution I / contracts/cli.md (contradicts)
+- [x] T101 CRITICAL: Make `install.sh` install a bundle produced by `tools/release/build_bundle.py --local/--fast` (no `toolchain/` directory) by guarding the `find` lookups under `set -euo pipefail` and falling back to the host uv/Python, and emit the full `contracts/report-schema.md` JSON error report on any bootstrap abort instead of exiting 1 with empty stdout, per US1/AC1, FR-001, FR-017, SC-001 (contradicts)
+- [x] T102 HIGH: Honour `TROVIUM_LIBRARY_ROOT`, `TROVIUM_SOURCE`, and `TROVIUM_CLIENT_URL` as install fallbacks in `src/trovium/deploy/installer.py` with CLI > environment > config > default precedence, covered by `tests/contract/deploy/test_unattended.py`, per FR-006 / contracts/cli.md (missing)
+- [x] T103 HIGH: Create `tests/fixtures/deploy/` (`fake_uv.sh`, `accept_lib.sh`, `broken-bundle.tar.gz` plus `.sha256`) so acceptance blocks T089–T099 run end to end, and execute them, per T006/T025, SC-001–SC-010, SC-012 (missing)
+- [x] T104 HIGH: Add `tests/integration/deploy/test_install_local.py` and `test_online_release.py` covering local/offline install, same-version no-op, command repair, latest versus pinned online install, and the five positive plus two negative SC-002 matrix cases, per US1, FR-005, FR-008, SC-001, SC-002 (missing)
+- [x] T105 HIGH: Add `tests/integration/deploy/test_isolation.py` and `test_install_selfcheck.py` covering `--force` takeover, refusal to install from the active tool dir, two-user isolation, and a staged `--help` failure that leaves the active version unchanged, per US1/AC3, FR-019 / contracts/cli.md (missing)
+- [x] T106 HIGH: Add `tests/integration/deploy/test_repeatable.py` and `test_offline.py` proving the `check` fast path, verified bundle-cache reuse, a no-op under 30 seconds, and a `UV_OFFLINE=1` install behind unreachable proxies, per SC-003, SC-010, FR-008 (missing)
+- [x] T107 HIGH: Add `tests/integration/deploy/test_upgrade.py` (`-k media_integrity`) and `test_rollback.py` (`-k recovery`, five interruption points) proving config preservation, untouched media, and no interrupted run reported as successful, per SC-005, SC-006, SC-008, FR-022 (missing)
+- [x] T108 HIGH: Add contract tests `test_install_cli.py`, `test_unattended.py`, `test_bundle_refusal.py`, `test_lock.py`, and `test_run_report.py` covering exit-code/report parity, no-TTY missing-input behavior, tampered-bundle refusal with exit 4, lock contention with exit 6, and redacted unattended reports, per FR-004, FR-006, FR-009, FR-023 (missing)
+- [x] T109 HIGH: Add contract tests `test_upgrade.py` and `test_uninstall.py` covering upgrade/downgrade report fields, no partial activation, uninstall/purge/no-op statuses, and no-record `--purge` removing only the config, per FR-013, FR-014, US3/AC4 (missing)
+- [x] T110 HIGH: Implement the `trovium-deploy check --version` fast path in `install.sh` before resolving or downloading a bundle for both `--version` and latest resolution, per contracts/bundle.md, SC-003 (partial)
+- [x] T111 HIGH: Add `tools/release/toolchain.lock.json` with pinned uv/CPython versions and SHA-256 digests, make `.github/workflows/release.yml` download and verify those artifacts instead of host glibc uv/Python, and assert the bundle adds no runtime dependency and ships uv/Python licenses, per T004/T039/T086 and the plan's pinned-toolchain decision (missing)
+- [x] T112 MEDIUM: Refuse `trovium-deploy install` when its interpreter or script lives inside the active recorded `tool_dir`, emitting `install_failed` with a remedy to use `install.sh`, per contracts/cli.md, T069 (missing)
+- [x] T113 MEDIUM: Report that automatic rollback is unavailable when `--force` adopts an unmanaged installation, in the install report and deployment record, per contracts/cli.md, T069 (missing)
+- [x] T114 MEDIUM: Add the report redaction hook in `src/trovium/deploy/report.py` and security regression tests for URLs with userinfo, credential environment names, and error paths, per FR-011, SC-007, T080 (partial)
+- [x] T115 MEDIUM: Extend foundational unit coverage for bundle traversal/platform/missing-file/unsafe-tarball cases, paths no-TTY/unwritable/two-root isolation, state field validation/atomic replacement/lock contention, report status precedence and stable nulls, and release-builder version staging and sidecars, per T010/T012/T014/T016/T023 (partial)
+- [x] T116 MEDIUM: Execute `quickstart.md` Scenarios 1–11 in order, record pass/fail, the SC-002 matrix counts, and SC-001/SC-003/SC-009/SC-012 timings, and fix every red path before recording, per T041/T061/T076/T078/T084/T085 (missing)
+- [ ] T117 LOW: Perform the Linux glibc/musl smoke test, or record that musl was not verified and confirm the `unsupported_platform` refusal plus the README limitation, per T087, spec Assumptions (missing)

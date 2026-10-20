@@ -118,6 +118,14 @@ Deployment targets one server and one media library; scheduling, containers, and
 multi-server fleet management are out of scope. Exact CLI and config contracts
 live in [`specs/002-server-deployment/contracts/`](specs/002-server-deployment/contracts/).
 
+### Supported hosts
+
+Release bundles target Linux on x86_64 and aarch64. macOS builds are for local
+development only. The installer refuses musl-based Linux with
+`unsupported_platform` until the static toolchain has been verified there; set
+`TROVIUM_ALLOW_MUSL=1` only after performing that verification yourself. glibc
+Linux is the supported server target.
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).

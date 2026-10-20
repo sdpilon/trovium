@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,8 @@ from trovium.deploy.report import (
     Report,
     ReportStatus,
     now,
+    register_secrets,
+    status_for,
 )
 from trovium.deploy.selfcheck import run_selfcheck
 from trovium.deploy.state import (
@@ -42,6 +45,20 @@ from trovium.deploy.state import (
     write_record,
 )
 from trovium.record import JsonStyle
+
+LIBRARY_ROOT_ENV = "TROVIUM_LIBRARY_ROOT"
+SOURCE_ENV = "TROVIUM_SOURCE"
+CLIENT_URL_ENV = "TROVIUM_CLIENT_URL"
+
+
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value).expanduser() if value else None
+
+
+def _env_value(name: str) -> str | None:
+    value = os.environ.get(name)
+    return value if value else None
 
 
 @dataclass(frozen=True)
@@ -65,6 +82,23 @@ def _commands_executable(bin_dir: Path, commands: tuple[str, ...]) -> bool:
         (bin_dir / command).is_file() and os.access(bin_dir / command, os.X_OK)
         for command in commands
     )
+
+
+def _running_from_active_tool_dir() -> bool:
+    """True when this process executes from the recorded tool environment."""
+
+    record = read_record()
+    if record is None:
+        return False
+    active = Path(record.tool_dir)
+    for candidate in (Path(sys.executable), Path(sys.argv[0])):
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(active.resolve())
+        except (OSError, ValueError):
+            continue
+        return True
+    return False
 
 
 def _check_path(
@@ -113,6 +147,7 @@ def _config_checks(config: TroviumConfig) -> list[Check]:
     if config.source.mode == "client":
         username = os.environ.get(config.source.client_username_env)
         password = os.environ.get(config.source.client_password_env)
+        register_secrets((username, password))
         missing = [
             name
             for name, value in (
@@ -141,21 +176,33 @@ def _config_checks(config: TroviumConfig) -> list[Check]:
 
 
 def _report_status(checks: list[Check]) -> ReportStatus:
-    if any(check.status is CheckStatus.FAIL for check in checks):
-        return ReportStatus.ERROR
-    if any(check.status is CheckStatus.WARN for check in checks):
-        return ReportStatus.DEGRADED
-    return ReportStatus.OK
+    return status_for(checks)
 
 
 def _resolve_install_config(
     opts: InstallOptions,
 ) -> tuple[TroviumConfig, list[str], list[Action]]:
-    target = config_path(opts.config)
+    try:
+        return _resolve_install_config_inner(opts)
+    except ConfigError as error:
+        raise DeployError(
+            "config_invalid",
+            str(error),
+            "Fix the configuration file and retry.",
+            exit_code=7,
+        ) from error
+
+
+def _resolve_install_config_inner(
+    opts: InstallOptions,
+) -> tuple[TroviumConfig, list[str], list[Action]]:
+    target = config_path()
     warnings: list[str] = []
     actions: list[Action] = []
     if opts.config is not None and opts.config.resolve() != target.resolve():
-        if opts.config.exists() and not target.exists():
+        if not opts.config.exists():
+            raise ConfigError(f"supplied config does not exist: {opts.config}")
+        if not target.exists():
             copy_config(opts.config, target)
             actions.append(
                 Action(
@@ -165,7 +212,7 @@ def _resolve_install_config(
                     detail="copied supplied config",
                 )
             )
-        elif target.exists():
+        else:
             warnings.append(
                 f"existing config retained; supplied config not applied: {opts.config}"
             )
@@ -200,7 +247,22 @@ def _resolve_install_config(
             "Choose one source and retry.",
             exit_code=2,
         )
-    root = opts.library_root
+    source = opts.source if opts.source is not None else _env_path(SOURCE_ENV)
+    client_url = (
+        opts.client_url if opts.client_url is not None else _env_value(CLIENT_URL_ENV)
+    )
+    if source is not None and client_url is not None:
+        raise DeployError(
+            "misuse",
+            "--source cannot be combined with --client-url",
+            f"Unset {SOURCE_ENV} or {CLIENT_URL_ENV} and retry.",
+            exit_code=2,
+        )
+    root = (
+        opts.library_root
+        if opts.library_root is not None
+        else _env_path(LIBRARY_ROOT_ENV)
+    )
     if root is None:
         if opts.non_interactive:
             raise DeployError(
@@ -210,9 +272,9 @@ def _resolve_install_config(
                 exit_code=2,
             )
         root = Path(paths.prompt("Library root")).expanduser()
-    if opts.source is not None:
+    if source is not None:
         mode = "disk"
-    elif opts.client_url is not None:
+    elif client_url is not None:
         mode = "client"
     else:
         mode = None
@@ -220,8 +282,8 @@ def _resolve_install_config(
         target,
         library_root=root,
         source_mode=mode,
-        source_path=opts.source,
-        client_url=opts.client_url,
+        source_path=source,
+        client_url=client_url,
         ingest=IngestSettings(),
     )
     actions.append(
@@ -269,7 +331,7 @@ def _cache_wheelhouse(info: bundle_module.BundleInfo) -> Path:
     wheelhouse = cache / "wheelhouse"
     paths.ensure_directory(cache)
     shutil.copytree(info.root / "wheelhouse", wheelhouse, dirs_exist_ok=True)
-    shutil.copy2(info.wheel.path, cache / "trovium.whl")
+    shutil.copy2(info.wheel.path, cache / info.wheel.path.name)
     return cache
 
 
@@ -283,8 +345,8 @@ def _rollback(
 ) -> None:
     cache = Path(previous.wheel_cache)
     wheelhouse = cache / "wheelhouse"
-    wheel = cache / "trovium.whl"
-    if not wheelhouse.is_dir() or not wheel.is_file():
+    wheels = sorted(cache.glob("trovium-*.whl"))
+    if not wheelhouse.is_dir() or not wheels:
         raise DeployError(
             "rollback_failed",
             "no cached previous wheel is available for rollback",
@@ -297,7 +359,7 @@ def _rollback(
         wheelhouse=wheelhouse,
         tool_dir=tool_dir,
         bin_dir=bin_dir,
-        wheel=wheel,
+        wheel=wheels[-1],
         force=True,
     )
 
@@ -305,6 +367,12 @@ def _rollback(
 def install(opts: InstallOptions) -> Report:
     """Install or upgrade from a verified bundle."""
 
+    if _running_from_active_tool_dir():
+        raise DeployError(
+            "install_failed",
+            "refusing to install from the active tool environment",
+            "Run install.sh instead; promotion would replace the running installer.",
+        )
     platform = paths.detect_platform()
     paths.ensure_supported(platform)
     report = Report(operation=Operation.INSTALL)
@@ -375,6 +443,13 @@ def install(opts: InstallOptions) -> Report:
                     "Remove the existing commands or rerun with --force.",
                     exit_code=3,
                 )
+        adopted = (
+            opts.force
+            and record_before is None
+            and any(
+                (paths.bin_dir() / command).exists() for command in info.wheel.commands
+            )
+        )
         if record_before is not None:
             report.operation = Operation.UPGRADE
             report.previous_version = record_before.version
@@ -508,6 +583,7 @@ def install(opts: InstallOptions) -> Report:
                 status="ok",
                 at=now(),
             ),
+            extra={"rollback_available": not adopted},
         )
         write_record(record)
         report.actions.append(
@@ -540,6 +616,21 @@ def install(opts: InstallOptions) -> Report:
                 detail="deployment record written",
             )
         )
+        if adopted:
+            report.checks.append(
+                Check(
+                    name="rollback",
+                    status=CheckStatus.WARN,
+                    detail=(
+                        "adopted an unmanaged installation; no cached previous "
+                        "wheel exists, so automatic rollback is unavailable"
+                    ),
+                    remedy=(
+                        "Keep the bundle or version you installed so it can be "
+                        "reinstalled explicitly."
+                    ),
+                )
+            )
         report.status = _report_status(report.checks)
         report.next_steps.extend(
             [
@@ -758,7 +849,8 @@ def uninstall(*, purge: bool = False, config_override: Path | None = None) -> Re
                     detail="uv unavailable; removed recorded paths instead",
                 )
             )
-        shutil.rmtree(Path(record.wheel_cache), ignore_errors=True)
+        shutil.rmtree(paths.state_dir() / "cache", ignore_errors=True)
+        shutil.rmtree(paths.staging_root(), ignore_errors=True)
         shutil.rmtree(paths.toolchain_root(), ignore_errors=True)
         paths.record_path().unlink(missing_ok=True)
         report.actions.append(

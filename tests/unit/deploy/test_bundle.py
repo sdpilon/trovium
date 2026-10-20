@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from trovium.deploy.bundle import load_bundle
+from trovium.deploy.bundle import BundleInfo, load_bundle
 from trovium.deploy.paths import Platform
 from trovium.deploy.report import DeployError
 
@@ -91,3 +91,76 @@ def test_wheel_version_mismatch_is_refused(tmp_path: Path) -> None:
             python_override=tmp_path / "python",
         )
     assert error.value.code == "bundle_invalid"
+
+
+def test_absolute_manifest_path_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["files"] = {"/etc/passwd": "sha256:" + "0" * 64}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+    assert error.value.code == "bundle_invalid"
+
+
+def test_traversal_manifest_path_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["files"] = {"../escape": "sha256:" + "0" * 64}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+    assert error.value.code == "bundle_invalid"
+
+
+def test_missing_manifest_file_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path, version="0.1.0")
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["files"]["wheelhouse/absent.whl"] = "sha256:" + "0" * 64
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+    assert error.value.code == "bundle_invalid"
+
+
+def test_wrong_platform_manifest_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["platform"] = "linux-aarch64"
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+    assert error.value.code == "bundle_invalid"
+
+
+def test_incomplete_manifest_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    (root / "manifest.json").write_text('{"schema_version": 1}', encoding="utf-8")
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+    assert error.value.code == "bundle_invalid"
+
+
+def test_unsafe_python_tarball_is_refused(tmp_path: Path) -> None:
+    import tarfile
+
+    from trovium.deploy.bundle import extract_python
+
+    archive = tmp_path / "python.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        info = tarfile.TarInfo("evil-link")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "/etc/passwd"
+        tar.addfile(info)
+    with pytest.raises(DeployError) as error:
+        extract_python(archive, tmp_path / "python")
+    assert error.value.code == "bundle_invalid"
+
+
+def _load(root: Path, tmp_path: Path) -> BundleInfo:
+    return load_bundle(
+        root,
+        platform=Platform(os="linux", arch="x86_64"),
+        uv_override=tmp_path / "uv",
+        python_override=tmp_path / "python",
+    )

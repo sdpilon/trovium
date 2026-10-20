@@ -126,6 +126,21 @@ class DeploymentRecord:
     schema_version: int = RECORD_SCHEMA_VERSION
     extra: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        for name in (
+            "config_path",
+            "tool_dir",
+            "bin_dir",
+            "uv_path",
+            "python_path",
+            "wheel_cache",
+        ):
+            value = getattr(self, name)
+            if not Path(value).is_absolute():
+                raise ValueError(f"{name} must be an absolute path: {value}")
+        if not self.commands:
+            raise ValueError("commands must list at least one console script")
+
     def to_json(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "schema_version": self.schema_version,
@@ -149,6 +164,23 @@ class DeploymentRecord:
 
     @classmethod
     def from_json(cls, payload: dict[str, Any]) -> DeploymentRecord:
+        known = {
+            "schema_version",
+            "version",
+            "previous_version",
+            "installed_at",
+            "config_path",
+            "tool_dir",
+            "bin_dir",
+            "uv_path",
+            "python_path",
+            "commands",
+            "wheel_cache",
+            "wheel_sha256",
+            "bundle_platform",
+            "last_self_check",
+            "last_operation",
+        }
         try:
             return cls(
                 schema_version=int(payload.get("schema_version", 0)),
@@ -174,6 +206,9 @@ class DeploymentRecord:
                 last_operation=LastOperation.from_json(
                     payload.get("last_operation", {})
                 ),
+                extra={
+                    key: value for key, value in payload.items() if key not in known
+                },
             )
         except (KeyError, TypeError, ValueError) as error:
             raise DeployError(

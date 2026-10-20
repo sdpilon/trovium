@@ -54,18 +54,13 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q jq
-      - name: Install managed Python
-        run: uv python install 3.13
       - name: Build release bundle
         run: |
           version="${GITHUB_REF_NAME#v}"
-          python_path="$(uv python find --managed-python --resolve-links 3.13)"
-          python_dir="$(dirname "$(dirname "$python_path")")"
           uv run python tools/release/build_bundle.py \
             --version "$version" \
             --platform "${{ matrix.platform }}" \
-            --uv "$(command -v uv)" \
-            --python "$python_dir" \
+            --locked \
             --out dist
       - name: Add bootstrap asset
         run: |

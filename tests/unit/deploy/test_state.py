@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -69,3 +70,56 @@ def test_lock_can_be_acquired(tmp_path: Path) -> None:
     path = tmp_path / "deploy.lock"
     with acquire_lock(path):
         assert path.exists()
+
+
+def test_record_rejects_relative_paths(tmp_path: Path) -> None:
+    record = _record()
+    payload = record.to_json()
+    payload["bin_dir"] = "relative/bin"
+    with pytest.raises(DeployError):
+        read_record(_write_payload(tmp_path, payload))
+
+
+def test_record_rejects_an_empty_command_list(tmp_path: Path) -> None:
+    payload = _record().to_json()
+    payload["commands"] = []
+    with pytest.raises(DeployError):
+        read_record(_write_payload(tmp_path, payload))
+
+
+def test_atomic_replacement_leaves_no_temporary_file(tmp_path: Path) -> None:
+    path = tmp_path / "deployment.json"
+    write_record(_record(), path)
+    first = path.read_bytes()
+    write_record(_record(), path)
+    assert path.read_bytes() == first
+    assert not list(tmp_path.glob(".deployment.json.tmp"))
+
+
+def test_extra_keys_survive_a_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "deployment.json"
+    payload = _record().to_json()
+    payload["rollback_available"] = False
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = read_record(path)
+    assert loaded is not None
+    assert loaded.extra["rollback_available"] is False
+
+
+def test_lock_contention_is_named(tmp_path: Path) -> None:
+    import fcntl
+
+    path = tmp_path / "deploy.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(DeployError) as error, acquire_lock(path):
+            pass
+        assert error.value.code == "lock_held"
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _write_payload(tmp_path: Path, payload: dict[str, object]) -> Path:
+    path = tmp_path / "deployment.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path

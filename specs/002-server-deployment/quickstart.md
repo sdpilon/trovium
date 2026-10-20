@@ -175,6 +175,7 @@ chmod 600 "$tmp/case4/supplied.ini"
 
 HOME="$tmp/case4/home" \
 TROVIUM_BIN_DIR="$tmp/case4/bin" \
+PATH="$tmp/case4/bin:$PATH" \
 TROVIUM_CONFIG_FILE="$tmp/case4/config/config.ini" \
 TROVIUM_STATE_HOME="$tmp/case4/state" \
 TROVIUM_DATA_HOME="$tmp/case4/data" \
@@ -195,6 +196,7 @@ unchanged; the report records a `write_config` action.
 mkdir -p "$tmp/case5/home" "$tmp/case5/library" "$tmp/case5/bin" "$tmp/case5/config"
 HOME="$tmp/case5/home" \
 TROVIUM_BIN_DIR="$tmp/case5/bin" \
+PATH="$tmp/case5/bin:$PATH" \
 TROVIUM_CONFIG_FILE="$tmp/case5/config/config.ini" \
 TROVIUM_STATE_HOME="$tmp/case5/state" \
 TROVIUM_DATA_HOME="$tmp/case5/data" \
@@ -234,12 +236,19 @@ bash install.sh --bundle "$bundle2" \
   deployment record.
 - The report includes `stage`, `self_check`, and `promote` actions.
 
-## Scenario 7: failed upgrade rolls back (Story P3, SC-008)
+## Scenario 7: failed upgrade leaves the previous version active (Story P3, SC-008)
 
 **Setup**: use a deliberately broken local bundle fixture whose staged
 `trovium-ingest --help` exits non-zero. The contract tests build this fixture;
 the quickstart assumes `tests/fixtures/deploy/broken-bundle.tar.gz` and its
-`.sha256` sidecar are available.
+`.sha256` sidecar are available. The checked-in copy is built for
+`darwin-aarch64` and uses version `0.2.1`; regenerate it with
+`accept_broken_bundle` (see `tests/fixtures/deploy/README.md`) on another
+platform, and run this scenario after Scenario 6 so `0.2.0` is active.
+
+This fixture fails at the staged self-check, before promotion. The
+post-promotion `_rollback` path is covered by
+`tests/integration/deploy/test_rollback.py`, not by this scenario.
 
 ```sh
 bash install.sh --bundle tests/fixtures/deploy/broken-bundle.tar.gz \
@@ -327,17 +336,18 @@ test "$code" -ne 0
 upgrade.
 
 ```sh
-before=$(find "$tmp/library" -type f -exec sha256sum {} + | sort | sha256sum)
+printf 'media' > "$tmp/library/keep.me"
+before=$(find "$tmp/library" "$tmp/source" -type f -exec sha256sum {} + | sort)
 trovium-deploy uninstall --json pretty > "$tmp/uninstall.json"
 
 test ! -e "$tmp/bin/trovium-ingest"
 test -f "$tmp/config/config.ini"
-after=$(find "$tmp/library" -type f -exec sha256sum {} + | sort | sha256sum)
+after=$(find "$tmp/library" "$tmp/source" -type f -exec sha256sum {} + | sort)
 test "$before" = "$after"
 ```
 
 **Expected**: exit 0; `.status` is `ok`; config remains; commands are gone; the
-library inventory is unchanged. The installer can still run uninstall after the
+media inventory (library and source) is unchanged. The installer can still run uninstall after the
 installed command is gone:
 
 ```sh
