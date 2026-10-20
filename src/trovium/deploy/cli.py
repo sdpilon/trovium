@@ -1,0 +1,163 @@
+"""``trovium-deploy``: install, check, status, and uninstall trovium."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+from trovium.deploy.installer import InstallOptions, check, install, status, uninstall
+from trovium.deploy.report import (
+    DeployError,
+    Operation,
+    Report,
+    ReportStatus,
+    emit,
+    failure_report,
+    human_summary,
+)
+from trovium.record import JsonStyle
+
+EXIT_OK = 0
+EXIT_CHECK_STALE = 1
+EXIT_MISUSE = 2
+EXIT_PREFLIGHT = 3
+EXIT_BUNDLE = 4
+EXIT_INSTALL = 5
+EXIT_LOCK = 6
+EXIT_CONFIG = 7
+
+
+def _json_style(value: str) -> JsonStyle:
+    return JsonStyle(value)
+
+
+def _test_override(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value).expanduser() if value else None
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line surface from contracts/cli.md."""
+
+    parser = argparse.ArgumentParser(
+        prog="trovium-deploy",
+        description="Install, upgrade, inspect, or uninstall trovium.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    install_parser = subparsers.add_parser("install", help="install or upgrade")
+    install_parser.add_argument("--bundle", type=Path, required=True)
+    install_parser.add_argument("--non-interactive", action="store_true")
+    install_parser.add_argument("--library-root", type=Path)
+    source_group = install_parser.add_mutually_exclusive_group()
+    source_group.add_argument("--source", type=Path)
+    source_group.add_argument("--client-url")
+    install_parser.add_argument("--config", type=Path)
+    install_parser.add_argument("--force", action="store_true")
+    install_parser.add_argument(
+        "--json",
+        choices=[item.value for item in JsonStyle],
+        default=JsonStyle.PRETTY.value,
+    )
+    install_parser.add_argument("--uv", type=Path, help=argparse.SUPPRESS)
+    install_parser.add_argument("--python", type=Path, help=argparse.SUPPRESS)
+
+    check_parser = subparsers.add_parser("check", help="fast current-version check")
+    check_parser.add_argument("--version", required=True)
+    check_parser.add_argument(
+        "--json",
+        choices=[item.value for item in JsonStyle],
+        default=JsonStyle.PRETTY.value,
+    )
+
+    status_parser = subparsers.add_parser(
+        "status", help="read-only installation status"
+    )
+    status_parser.add_argument("--config", type=Path)
+    status_parser.add_argument(
+        "--json",
+        choices=[item.value for item in JsonStyle],
+        default=JsonStyle.PRETTY.value,
+    )
+
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="remove the installation"
+    )
+    uninstall_parser.add_argument("--purge", action="store_true")
+    uninstall_parser.add_argument("--config", type=Path)
+    uninstall_parser.add_argument(
+        "--json",
+        choices=[item.value for item in JsonStyle],
+        default=JsonStyle.PRETTY.value,
+    )
+    return parser
+
+
+def _operation(command: str) -> Operation:
+    if command == "uninstall":
+        return Operation.UNINSTALL
+    if command == "status":
+        return Operation.STATUS
+    return Operation.INSTALL
+
+
+def _dispatch(args: argparse.Namespace) -> Report | None:
+    if args.command == "install":
+        return install(
+            InstallOptions(
+                bundle=args.bundle,
+                non_interactive=bool(args.non_interactive),
+                library_root=args.library_root,
+                source=args.source,
+                client_url=args.client_url,
+                config=args.config,
+                force=bool(args.force),
+                json_style=_json_style(args.json),
+                uv_override=args.uv or _test_override("TROVIUM_TEST_UV"),
+                python_override=args.python or _test_override("TROVIUM_TEST_PYTHON"),
+            )
+        )
+    if args.command == "check":
+        return check(args.version)
+    if args.command == "status":
+        return status(args.config)
+    return uninstall(purge=bool(args.purge), config_override=args.config)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point: dispatch, emit one report, and map the exit code."""
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    operation = _operation(args.command)
+    try:
+        report = _dispatch(args)
+    except DeployError as failure:
+        report = failure_report(operation, failure)
+        emit(report, _json_style(getattr(args, "json", JsonStyle.PRETTY.value)))
+        human_summary(report)
+        return failure.exit_code
+    except Exception as error:  # pragma: no cover - defensive boundary
+        unexpected = DeployError(
+            "internal",
+            f"unexpected deployment failure: {error}",
+            "Inspect the error and retry; report a bug if it recurs.",
+        )
+        report = failure_report(operation, unexpected)
+        emit(report, _json_style(getattr(args, "json", JsonStyle.PRETTY.value)))
+        human_summary(report)
+        return EXIT_INSTALL
+    if report is None:
+        return EXIT_CHECK_STALE
+    emit(report, _json_style(getattr(args, "json", JsonStyle.PRETTY.value)))
+    human_summary(report)
+    if report.status is ReportStatus.ERROR:
+        return EXIT_PREFLIGHT
+    return EXIT_OK
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

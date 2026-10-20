@@ -24,6 +24,7 @@ dependencies = ["httpx>=0.27"]
 
 [project.scripts]
 trovium-ingest = "trovium.cli:main"
+trovium-deploy = "trovium.deploy.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/sdpilon/trovium"
@@ -43,6 +44,7 @@ packages = ["src/trovium"]
 minversion = "8.0"
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.13"

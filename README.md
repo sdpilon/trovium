@@ -80,6 +80,44 @@ Full contracts live in
 > client's `<save_path>/<torrent name>/` expectation and moving the files would
 > break seeding.
 
+## Install on a server
+
+The deployment feature is defined in
+[`specs/002-server-deployment/`](specs/002-server-deployment/). It installs every
+shipped pipeline step for the current user, creates a configuration file, runs a
+self-check, and records deployment state. It is user-scoped and does not require
+root.
+
+```sh
+# Online, interactive
+curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.sh | bash -s --
+
+# Online, unattended
+curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.sh \
+  | bash -s -- --non-interactive --library-root /srv/media
+
+# Offline, local bundle
+bash install.sh --bundle ./trovium-0.1.0-linux-x86_64.tar.gz \
+  --non-interactive --library-root /srv/media
+
+# Pinned version
+bash install.sh --version 0.1.0 --non-interactive --library-root /srv/media
+```
+
+Inspect, upgrade, or remove the installation:
+
+```sh
+trovium-deploy status
+bash install.sh --version 0.2.0 --non-interactive --library-root /srv/media
+trovium-deploy uninstall          # keeps config and media
+trovium-deploy uninstall --purge  # also removes config, never media
+```
+
+The configuration file is `${XDG_CONFIG_HOME:-~/.config}/trovium/config.ini`.
+Deployment targets one server and one media library; scheduling, containers, and
+multi-server fleet management are out of scope. Exact CLI and config contracts
+live in [`specs/002-server-deployment/contracts/`](specs/002-server-deployment/contracts/).
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
