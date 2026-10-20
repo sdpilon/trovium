@@ -29,20 +29,8 @@ them.
 
 ### Schema
 
-| Section     | Key                   | Type         | Default                   | Validation                                                        |
-| ----------- | --------------------- | ------------ | ------------------------- | ----------------------------------------------------------------- |
-| `[meta]`    | `schema_version`      | integer      | `1`                       | Missing = 0 (migrate with backup); newer = warn, no rewrite       |
-| `[library]` | `root`                | path         | none (required)           | Expanded; may be absent = warning; must be a directory if present |
-| `[source]`  | `mode`                | enum         | none                      | `disk` or `client`; if absent, source is unconfigured             |
-| `[source]`  | `path`                | path         | none                      | Required when mode = `disk`; expanded; may be absent = warning    |
-| `[source]`  | `client_url`          | URL          | none                      | Required when mode = `client`; `http`/`https`; no userinfo        |
-| `[source]`  | `client_username_env` | env-var name | `TROVIUM_CLIENT_USERNAME` | Non-empty; no `=`; value is never stored                          |
-| `[source]`  | `client_password_env` | env-var name | `TROVIUM_CLIENT_PASSWORD` | Non-empty; no `=`; value is never stored                          |
-| `[ingest]`  | `category`            | enum         | `all`                     | `movie`, `tv`, `all`                                              |
-| `[ingest]`  | `mode`                | enum         | `move`                    | `move`, `copy`, `hardlink`                                        |
-| `[ingest]`  | `post_ingest`         | enum         | `keep`                    | `keep`, `pause`, `delete`; applies only to client mode            |
-| `[ingest]`  | `on_fail`             | enum         | `continue`                | `stop`, `continue`                                                |
-| `[ingest]`  | `json`                | enum         | `pretty`                  | `compact`, `pretty`                                               |
+The authoritative key/default/enum table is in `contracts/config-schema.md`.
+The model adds the validation, precedence, and migration rules below.
 
 ### Validation rules
 
@@ -185,52 +173,9 @@ Unsupported OS/architecture combinations are refused before any change.
 ## DeploymentRunReport
 
 The JSON document emitted to stdout for every `install`, `status`, and
-`uninstall` invocation. The authoritative field-level contract is
-`contracts/report-schema.md`.
-
-| Field              | Type                  | Notes                                              |
-| ------------------ | --------------------- | -------------------------------------------------- |
-| `schema_version`   | integer               | `1`                                                |
-| `operation`        | enum                  | `install`, `upgrade`, `status`, `uninstall`        |
-| `status`           | enum                  | `ok`, `noop`, `degraded`, `not_installed`, `error` |
-| `version`          | string or null        | Active version after the operation                 |
-| `previous_version` | string or null        | Active version before the operation                |
-| `config_path`      | absolute path or null | The config file in use                             |
-| `install_root`     | absolute path or null | Private tool environment                           |
-| `bin_dir`          | absolute path or null | Command directory                                  |
-| `commands`         | list of strings       | Console scripts found or expected                  |
-| `actions`          | list of Action        | Ordered actions with outcomes                      |
-| `checks`           | list of Check         | Validation results                                 |
-| `next_steps`       | list of strings       | Operator guidance, secret-free                     |
-| `error`            | Error or null         | Required when status = `error`                     |
-| `finished_at`      | timestamp             | ISO 8601 UTC                                       |
-
-### DeploymentAction
-
-| Field     | Type           | Notes                                                              |
-| --------- | -------------- | ------------------------------------------------------------------ |
-| `action`  | string         | e.g. `verify_bundle`, `stage`, `self_check`, `promote`, `rollback` |
-| `target`  | string         | Path, command, or version the action applies to                    |
-| `outcome` | enum           | `ok`, `skipped`, `failed`                                          |
-| `detail`  | string or null | Secret-free explanation                                            |
-
-### DeploymentCheck
-
-| Field    | Type           | Notes                                                   |
-| -------- | -------------- | ------------------------------------------------------- |
-| `name`   | string         | e.g. `platform`, `config`, `installed_commands`, `path` |
-| `status` | enum           | `pass`, `warn`, `fail`                                  |
-| `detail` | string         | Secret-free observation                                 |
-| `remedy` | string or null | Actionable guidance when not passing                    |
-
-### DeploymentError
-
-| Field     | Type           | Notes                             |
-| --------- | -------------- | --------------------------------- |
-| `code`    | string         | Stable machine-readable code      |
-| `message` | string         | Human-readable cause, secret-free |
-| `remedy`  | string         | Actionable next step              |
-| `path`    | string or null | Relevant path, if any             |
+`uninstall` invocation. The authoritative field table is in
+`contracts/report-schema.md`; the report entity contains Actions, Checks, and
+an optional Error, whose external shapes are defined by that contract.
 
 ## SelfCheckResult
 

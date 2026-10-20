@@ -319,7 +319,9 @@ untouched, and a second uninstall succeeds as a no-op.
   spent waiting on an unusually slow network.
 - **SC-002**: At least 95% of first attempts succeed across a matrix of clean
   supported server environments; every unsuccessful attempt names a cause and
-  a remedy before changing the server.
+  a remedy before changing the server. The matrix includes at least five clean
+  positive cases and at least two negative preflight cases; results are
+  recorded with pass/fail counts and the cause of any failure.
 - **SC-003**: Repeating an identical install or upgrade completes in under
   30 seconds, makes zero changes, and exits successfully.
 - **SC-004**: An unattended installation with all required settings supplied

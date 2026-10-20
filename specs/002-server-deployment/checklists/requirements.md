@@ -37,12 +37,16 @@
     boundaries, not implementation choices; no language, framework, or
     deployment product is named.
   - No [NEEDS CLARIFICATION] markers were required. The deployment mechanism,
-    privilege model, fleet approach, scheduling default, and offline path are
-    recorded as explicit assumptions because the request did not specify them.
-  - Scope is bounded in "Out of Scope": no OS provisioning, central
+    privilege model, single-host/single-library scope, run-report shape, and
+    offline path are recorded as explicit assumptions because the request did
+    not specify them.
+  - Scope is bounded in "Out of Scope": no OS provisioning, multi-server
     orchestration, containers, macOS/Windows automation, system-wide installs,
-    or secret management.
-  - FR-001 through FR-022 each map to at least one acceptance scenario, edge
+    scheduling, or secret management.
+  - FR-001 through FR-023 each map to at least one acceptance scenario, edge
     case, or success criterion; FR-018 (media untouched) is proven by SC-005,
-    and FR-019 (per-user isolation) is covered by the shared-server edge case.
+    FR-019 (per-user isolation) is covered by the shared-server edge case, and
+    FR-015/SC-011 are retired with scheduling.
 - First validation pass: all items pass (2026-10-19).
+- Second validation pass (2026-10-20): all items pass after the scope and
+  clarification updates.

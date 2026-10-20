@@ -68,9 +68,11 @@ the versioned asset path.
 
 ```sh
 mkdir -p "$tmp/case1b/home" "$tmp/case1b/library" "$tmp/case1b/bin" \
-  "$tmp/case1b/config" "$tmp/release/download/v0.1.0"
+  "$tmp/case1b/config" "$tmp/release/download/v0.1.0" \
+  "$tmp/release/releases/latest/download"
 cp "$bundle" "$tmp/release/download/v0.1.0/$(basename "$bundle")"
 cp "$bundle.sha256" "$tmp/release/download/v0.1.0/$(basename "$bundle").sha256"
+printf '0.1.0\n' > "$tmp/release/releases/latest/download/VERSION"
 python3 -m http.server 8765 --directory "$tmp/release" >/dev/null 2>&1 &
 http_pid=$!
 trap 'kill "$http_pid" 2>/dev/null || true' EXIT
@@ -85,14 +87,45 @@ TROVIUM_CACHE_HOME="$tmp/case1b/cache" \
 bash install.sh --release-base-url http://127.0.0.1:8765 --version 0.1.0 \
   --non-interactive --library-root "$tmp/case1b/library" --source "$tmp/source" \
   --json compact > "$tmp/case1b/install.json"
+
+mkdir -p "$tmp/case1c/home" "$tmp/case1c/library" "$tmp/case1c/bin" \
+  "$tmp/case1c/config"
+HOME="$tmp/case1c/home" \
+TROVIUM_BIN_DIR="$tmp/case1c/bin" \
+TROVIUM_CONFIG_FILE="$tmp/case1c/config/config.ini" \
+TROVIUM_STATE_HOME="$tmp/case1c/state" \
+TROVIUM_DATA_HOME="$tmp/case1c/data" \
+TROVIUM_CACHE_HOME="$tmp/case1c/cache" \
+bash install.sh --release-base-url http://127.0.0.1:8765 \
+  --non-interactive --library-root "$tmp/case1c/library" \
+  --source "$tmp/source" --json compact > "$tmp/case1c/install.json"
+jq -e '.version == "0.1.0"' "$tmp/case1c/install.json" >/dev/null
 kill "$http_pid"
 ```
 
-**Expected**: exit 0; `.status` is `ok` or `degraded`; `.version` is `0.1.0`;
-the installed command runs. The production equivalent is the
+**Expected**: both installs exit 0; `.status` is `ok` or `degraded`;
+`.version` is `0.1.0`; the installed command runs. The pinned run uses
+`--version 0.1.0`; the second run omits `--version` and exercises
+`releases/latest/download/VERSION`. The production equivalent is the
 `releases/latest/download` URL; this fixture exercises the same bootstrap
 download, checksum, extraction, and install path. Record the clean-runner
 timing separately against the 5-minute SC-001 target.
+
+## SC-002 validation matrix
+
+Run each case with a fresh temp HOME/XDG tree and record the result.
+
+| #   | Case                                                    | Expected                                         |
+| --- | ------------------------------------------------------- | ------------------------------------------------ |
+| 1   | glibc x86_64, disk source                               | install and self-check pass                      |
+| 2   | glibc x86_64, client config                             | install and self-check pass                      |
+| 3   | glibc x86_64, config-file non-interactive               | install and self-check pass                      |
+| 4   | glibc x86_64, offline local bundle                      | install and self-check pass                      |
+| 5   | glibc aarch64, disk source (or a second clean HOME/XDG) | install and self-check pass                      |
+| 6   | unsupported platform                                    | refused with `unsupported_platform` and a remedy |
+| 7   | missing prerequisite                                    | refused with `missing_prerequisite` and a remedy |
+
+Five of five positive cases passing is 100%, above the 95% target.
 
 ## Scenario 2: identical re-run is a no-op (Story P2, SC-003)
 
