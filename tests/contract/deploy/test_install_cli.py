@@ -195,3 +195,35 @@ def test_client_url_with_userinfo_is_a_config_failure(
     assert "u:p" not in completed.stdout
     assert "u:p" not in completed.stderr
     assert not layout.config.exists()
+
+
+def test_missing_downloader_names_the_prerequisite(
+    layout: Layout, tmp_path: Path
+) -> None:
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    for name in (
+        "bash",
+        "date",
+        "sed",
+        "tr",
+        "mktemp",
+        "find",
+        "awk",
+        "tar",
+        "shasum",
+        "sha256sum",
+        "uname",
+        "dirname",
+        "head",
+    ):
+        found = shutil.which(name)
+        if found is not None:
+            (shim / name).symlink_to(found)
+
+    completed = _bootstrap(layout, "--version", "0.9.0", env={"PATH": str(shim)})
+
+    payload = report(completed)
+    assert completed.returncode == 3
+    assert payload["error"]["code"] == "missing_prerequisite"
+    assert "curl" in payload["error"]["message"]

@@ -28,7 +28,12 @@ uv run python tools/release/build_bundle.py \
 `--locked` reads `toolchain.lock.json`, downloads the pinned uv and CPython
 artifacts for the requested platform, verifies each published SHA-256 before
 extracting it, and writes their license texts into `LICENSES/`. The lock covers
-the Linux targets only; local macOS bundles use the host toolchain.
+the glibc Linux targets only; local macOS bundles use the host toolchain.
+
+Linux bundles pin glibc artifacts because the supported server targets are
+glibc and the bootstrap refuses musl hosts until that toolchain is verified.
+Musl-linked CPython builds require the musl loader and cannot run on a glibc
+host, so they are not a valid release toolchain for this policy.
 
 The builder writes:
 

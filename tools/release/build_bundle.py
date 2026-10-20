@@ -128,6 +128,7 @@ def prepare_locked_toolchain(
 ) -> tuple[Path, Path]:
     """Download, verify, and extract the pinned uv and CPython for a platform."""
 
+    workdir.mkdir(parents=True, exist_ok=True)
     uv_asset, python_asset = select_locked_assets(lock, platform_name)
     uv_archive = download_verified(uv_asset, workdir / uv_asset.name)
     python_archive = download_verified(python_asset, workdir / python_asset.name)

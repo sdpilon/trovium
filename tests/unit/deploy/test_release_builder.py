@@ -37,7 +37,7 @@ def test_toolchain_lock_pins_both_tools_for_linux() -> None:
     for platform_name in ("linux-x86_64", "linux-aarch64"):
         uv_asset, python_asset = builder.select_locked_assets(lock, platform_name)
         assert uv_asset.url.startswith("https://github.com/astral-sh/uv/releases/")
-        assert uv_asset.name.endswith("unknown-linux-musl.tar.gz")
+        assert uv_asset.name.endswith("unknown-linux-gnu.tar.gz")
         assert len(uv_asset.sha256) == 64
         assert python_asset.name.startswith("cpython-3.13.16+")
         assert len(python_asset.sha256) == 64

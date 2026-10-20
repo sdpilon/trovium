@@ -192,10 +192,10 @@
 - [x] T082 [P] Update `README.md` with a concise install/upgrade/status/uninstall reference, offline bundle instructions, config precedence, and the single-library/no-scheduling boundary
 - [x] T083 [P] Clean up dead code, naming, and error messages in `src/trovium/deploy/`, `src/trovium/config.py`, `install.sh`, and `tools/release/`; keep mypy strict clean
 - [x] T084 Execute all `specs/002-server-deployment/quickstart.md` scenarios in order on the development host; record pass/fail and timings
-- [ ] T085 Run `scripts/check.sh` plus timing checks for SC-001 (install), SC-003 (no-op), SC-009 (uninstall), and SC-012 (status); record the clean-runner online install duration against the 5-minute SC-001 target. The spec-gate accept blocks run under a 30-second watchdog, so T089 is a functional check; the 5-minute metric is recorded here. Record the SC-002 matrix pass counts alongside the timings.
-- [ ] T086 Verify the release bundle contains no new runtime Python dependency, includes uv/Python licenses, and that a local bundle installs with `UV_OFFLINE=1`
-- [ ] T087 Perform a Linux smoke test on glibc and, if available, musl/Alpine. If musl is not verified, confirm the installer refuses it with `unsupported_platform` and document the limitation in `README.md`; do not claim live musl verification unless it was performed.
-- [ ] T088 Review the diff for accidental edits to `.specify/**`, `.opencode/commands/**`, or protected files; commit only feature files and the intentional `pyproject.toml`/`README.md`/workflow changes
+- [x] T085 Run `scripts/check.sh` plus timing checks for SC-001 (install), SC-003 (no-op), SC-009 (uninstall), and SC-012 (status); record the clean-runner online install duration against the 5-minute SC-001 target. The spec-gate accept blocks run under a 30-second watchdog, so T089 is a functional check; the 5-minute metric is recorded here. Record the SC-002 matrix pass counts alongside the timings.
+- [x] T086 Verify the release bundle contains no new runtime Python dependency, includes uv/Python licenses, and that a local bundle installs with `UV_OFFLINE=1`
+- [x] T087 Perform a Linux smoke test on glibc and, if available, musl/Alpine. If musl is not verified, confirm the installer refuses it with `unsupported_platform` and document the limitation in `README.md`; do not claim live musl verification unless it was performed.
+- [x] T088 Review the diff for accidental edits to `.specify/**`, `.opencode/commands/**`, or protected files; commit only feature files and the intentional `pyproject.toml`/`README.md`/workflow changes
 
 ---
 
@@ -493,4 +493,4 @@ Task: "Implement bundle in src/trovium/deploy/bundle.py"
 - [x] T114 MEDIUM: Add the report redaction hook in `src/trovium/deploy/report.py` and security regression tests for URLs with userinfo, credential environment names, and error paths, per FR-011, SC-007, T080 (partial)
 - [x] T115 MEDIUM: Extend foundational unit coverage for bundle traversal/platform/missing-file/unsafe-tarball cases, paths no-TTY/unwritable/two-root isolation, state field validation/atomic replacement/lock contention, report status precedence and stable nulls, and release-builder version staging and sidecars, per T010/T012/T014/T016/T023 (partial)
 - [x] T116 MEDIUM: Execute `quickstart.md` Scenarios 1–11 in order, record pass/fail, the SC-002 matrix counts, and SC-001/SC-003/SC-009/SC-012 timings, and fix every red path before recording, per T041/T061/T076/T078/T084/T085 (missing)
-- [ ] T117 LOW: Perform the Linux glibc/musl smoke test, or record that musl was not verified and confirm the `unsupported_platform` refusal plus the README limitation, per T087, spec Assumptions (missing)
+- [x] T117 LOW: Perform the Linux glibc/musl smoke test, or record that musl was not verified and confirm the `unsupported_platform` refusal plus the README limitation, per T087, spec Assumptions (missing)

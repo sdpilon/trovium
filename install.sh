@@ -275,6 +275,10 @@ if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1
     die "missing_prerequisite" "no SHA-256 tool found" \
         "Install coreutils or shasum and retry." 3
 fi
+if [ -z "$BUNDLE" ] && ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    die "missing_prerequisite" "neither curl nor wget is available" \
+        "Install curl or wget, or pass a local --bundle, and retry." 3
+fi
 need_command find
 need_command awk
 
