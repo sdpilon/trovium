@@ -57,7 +57,7 @@ die() {
     exit "$status"
 }
 
-# shellcheck disable=SC2329  # invoked indirectly by trap
+# shellcheck disable=SC2317,SC2329  # invoked indirectly by trap
 on_unexpected_failure() {
     local status=$?
     if [ "$REPORT_EMITTED" != "1" ]; then
@@ -211,14 +211,14 @@ extract_bundle() {
     fi
 }
 
-# shellcheck disable=SC2329  # invoked indirectly by trap
+# shellcheck disable=SC2317,SC2329  # invoked indirectly by trap
 cleanup() {
     if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
         rm -rf "$TMP_DIR"
     fi
 }
 trap cleanup EXIT
-# shellcheck disable=SC2329  # invoked indirectly by trap
+# shellcheck disable=SC2317,SC2329  # invoked indirectly by trap
 trap on_unexpected_failure ERR
 
 while [ $# -gt 0 ]; do
