@@ -18,6 +18,7 @@ feature). Implementation does not start without an agreed spec (XXIV).
 
 ```sh
 uv sync                 # first: prepare the environment (uv only; no pip/system installs)
+npm ci                  # once: pinned prettier/markdownlint-cli2 for the gate
 scripts/check.sh        # THE canonical check: ruff lint+format, mypy strict, pytest, prettier, markdownlint, shellcheck
 uv run pytest tests/integration/test_client_ingest.py   # one test file
 uv run pytest -k "single_file"          # one test by name

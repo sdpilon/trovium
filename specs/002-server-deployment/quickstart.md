@@ -69,10 +69,10 @@ the versioned asset path.
 ```sh
 mkdir -p "$tmp/case1b/home" "$tmp/case1b/library" "$tmp/case1b/bin" \
   "$tmp/case1b/config" "$tmp/release/download/v0.1.0" \
-  "$tmp/release/releases/latest/download"
+  "$tmp/release/latest/download"
 cp "$bundle" "$tmp/release/download/v0.1.0/$(basename "$bundle")"
 cp "$bundle.sha256" "$tmp/release/download/v0.1.0/$(basename "$bundle").sha256"
-printf '0.1.0\n' > "$tmp/release/releases/latest/download/VERSION"
+printf '0.1.0\n' > "$tmp/release/latest/download/VERSION"
 python3 -m http.server 8765 --directory "$tmp/release" >/dev/null 2>&1 &
 http_pid=$!
 trap 'kill "$http_pid" 2>/dev/null || true' EXIT
@@ -106,8 +106,8 @@ kill "$http_pid"
 **Expected**: both installs exit 0; `.status` is `ok` or `degraded`;
 `.version` is `0.1.0`; the installed command runs. The pinned run uses
 `--version 0.1.0`; the second run omits `--version` and exercises
-`releases/latest/download/VERSION`. The production equivalent is the
-`releases/latest/download` URL; this fixture exercises the same bootstrap
+`latest/download/VERSION` under the release base. The production
+equivalent is the `releases/latest/download` URL; this fixture exercises the same bootstrap
 download, checksum, extraction, and install path. Record the clean-runner
 timing separately against the 5-minute SC-001 target.
 
@@ -175,6 +175,7 @@ chmod 600 "$tmp/case4/supplied.ini"
 
 HOME="$tmp/case4/home" \
 TROVIUM_BIN_DIR="$tmp/case4/bin" \
+PATH="$tmp/case4/bin:$PATH" \
 TROVIUM_CONFIG_FILE="$tmp/case4/config/config.ini" \
 TROVIUM_STATE_HOME="$tmp/case4/state" \
 TROVIUM_DATA_HOME="$tmp/case4/data" \
@@ -195,6 +196,7 @@ unchanged; the report records a `write_config` action.
 mkdir -p "$tmp/case5/home" "$tmp/case5/library" "$tmp/case5/bin" "$tmp/case5/config"
 HOME="$tmp/case5/home" \
 TROVIUM_BIN_DIR="$tmp/case5/bin" \
+PATH="$tmp/case5/bin:$PATH" \
 TROVIUM_CONFIG_FILE="$tmp/case5/config/config.ini" \
 TROVIUM_STATE_HOME="$tmp/case5/state" \
 TROVIUM_DATA_HOME="$tmp/case5/data" \
@@ -234,12 +236,19 @@ bash install.sh --bundle "$bundle2" \
   deployment record.
 - The report includes `stage`, `self_check`, and `promote` actions.
 
-## Scenario 7: failed upgrade rolls back (Story P3, SC-008)
+## Scenario 7: failed upgrade leaves the previous version active (Story P3, SC-008)
 
 **Setup**: use a deliberately broken local bundle fixture whose staged
 `trovium-ingest --help` exits non-zero. The contract tests build this fixture;
 the quickstart assumes `tests/fixtures/deploy/broken-bundle.tar.gz` and its
-`.sha256` sidecar are available.
+`.sha256` sidecar are available. The checked-in copy is built for
+`darwin-aarch64` and uses version `0.2.1`; regenerate it with
+`accept_broken_bundle` (see `tests/fixtures/deploy/README.md`) on another
+platform, and run this scenario after Scenario 6 so `0.2.0` is active.
+
+This fixture fails at the staged self-check, before promotion. The
+post-promotion `_rollback` path is covered by
+`tests/integration/deploy/test_rollback.py`, not by this scenario.
 
 ```sh
 bash install.sh --bundle tests/fixtures/deploy/broken-bundle.tar.gz \
@@ -327,17 +336,18 @@ test "$code" -ne 0
 upgrade.
 
 ```sh
-before=$(find "$tmp/library" -type f -exec sha256sum {} + | sort | sha256sum)
+printf 'media' > "$tmp/library/keep.me"
+before=$(find "$tmp/library" "$tmp/source" -type f -exec sha256sum {} + | sort)
 trovium-deploy uninstall --json pretty > "$tmp/uninstall.json"
 
 test ! -e "$tmp/bin/trovium-ingest"
 test -f "$tmp/config/config.ini"
-after=$(find "$tmp/library" -type f -exec sha256sum {} + | sort | sha256sum)
+after=$(find "$tmp/library" "$tmp/source" -type f -exec sha256sum {} + | sort)
 test "$before" = "$after"
 ```
 
 **Expected**: exit 0; `.status` is `ok`; config remains; commands are gone; the
-library inventory is unchanged. The installer can still run uninstall after the
+media inventory (library and source) is unchanged. The installer can still run uninstall after the
 installed command is gone:
 
 ```sh

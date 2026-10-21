@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-19
 
-**Status**: Draft
+**Status**: Complete
 
 **Input**: User description: "As a trovium user, I want to install/deploy the tool to my server(s) in a simple way with minimal steps"
 

@@ -1,0 +1,5 @@
+# Tools pinned for the gate. Findings differ across releases, so every
+# boundary (local, pre-commit, CI, release, deploy) resolves these versions.
+# shellcheck is installed by .specify/gates/install-shellcheck.sh, checked
+# against the checksums shipped with spec-gates.
+shellcheck 0.11.0

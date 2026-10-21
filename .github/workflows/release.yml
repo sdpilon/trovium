@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install gate tooling
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq
+          # Keep this boundary on the same pinned versions as local runs and
+          # gates.yml: shellcheck comes from the checksum-verified release
+          # when .tool-versions pins it, and the Node linters come from the
+          # lockfile when one is present.
+          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+            bash .specify/gates/install-shellcheck.sh
+          else
+            sudo apt-get install -y -q shellcheck
+          fi
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install -g prettier markdownlint-cli2
+          fi
+      - name: Sync the Python environment
+        run: uv sync --frozen
+      - name: Run canonical quality gates
+        env:
+          UV_FROZEN: "1"
+        run: bash scripts/check.sh
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Install bundle tooling
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq
+      - name: Build release bundle
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          uv run python tools/release/build_bundle.py \
+            --version "$version" \
+            --platform "${{ matrix.platform }}" \
+            --locked \
+            --out dist
+      - name: Add bootstrap asset
+        run: |
+          cp install.sh dist/install.sh
+          sha256sum dist/install.sh > dist/install.sh.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trovium-${{ matrix.platform }}
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `gh` resolves the repository from a git remote or GH_REPO; this job
+          # has no checkout, and GITHUB_REPOSITORY alone is not enough.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "trovium $GITHUB_REF_NAME" \
+            --notes "Release $GITHUB_REF_NAME" \
+            --verify-tag

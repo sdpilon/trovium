@@ -18,10 +18,12 @@ use the same layout, verification, and self-check path.
 | `trovium-latest-<platform>.tar.gz.sha256`    | Alias checksum                       |
 
 Platforms: `linux-x86_64`, `linux-aarch64` (release targets);
-`darwin-x86_64`, `darwin-aarch64` (development/local bundles). Linux bundles use
-static musl `uv` and CPython builds. Release verification must exercise both
-glibc and musl before claiming both; until then, the bootstrap refuses musl
-hosts with `unsupported_platform` and a remedy. The wheelhouse is pure Python.
+`darwin-x86_64`, `darwin-aarch64` (development/local bundles). Linux bundles
+pin glibc `uv` and CPython builds, because the supported server hosts are
+glibc and a musl-linked CPython requires the musl loader. The bootstrap
+refuses musl hosts with `unsupported_platform` and a remedy until a musl
+toolchain has been verified there; that verification must exercise a real musl
+host before musl is claimed as supported. The wheelhouse is pure Python.
 
 ## Tarball layout
 

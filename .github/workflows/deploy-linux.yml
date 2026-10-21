@@ -1,0 +1,153 @@
+# Linux deployment boundary.
+#
+# Runs the deployment suites and the executable SC acceptance criteria on the
+# supported server platforms, then builds the pinned release bundle with
+# `--locked`, installs it offline with the bundled uv/CPython toolchain, and
+# proves musl hosts are refused. The gates workflow covers the same canonical
+# check on ubuntu-latest; this one is the platform-specific proof.
+name: Deploy (Linux)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deployment:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      UV_FROZEN: "1"
+      BUNDLE_VERSION: "0.9.0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install gate tooling
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq
+          # The acceptance step runs the parity gate, so this boundary must
+          # resolve the same pinned shellcheck and Node linters as local runs.
+          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+            bash .specify/gates/install-shellcheck.sh
+          else
+            sudo apt-get install -y -q shellcheck
+          fi
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install -g prettier markdownlint-cli2
+          fi
+      - name: Sync the Python environment
+        run: uv sync --frozen
+      - name: Deployment unit, contract, and integration tests
+        run: >-
+          uv run --frozen pytest -q
+          tests/unit/deploy
+          tests/contract/deploy
+          tests/integration/deploy
+      - name: Executable spec acceptance criteria
+        run: bash .specify/gates/verify.sh --boundary agent --accept 002-server-deployment
+      - name: Build the pinned release bundle
+        run: |
+          uv run python tools/release/build_bundle.py \
+            --version "$BUNDLE_VERSION" \
+            --platform "${{ matrix.platform }}" \
+            --locked \
+            --out dist
+      - name: Assert the bundle carries its toolchain and licenses
+        run: |
+          bundle="dist/trovium-${BUNDLE_VERSION}-${{ matrix.platform }}.tar.gz"
+          test -f "$bundle"
+          test -f "$bundle.sha256"
+          tar -tzf "$bundle" > listing.txt
+          grep -q 'LICENSES/LICENSE' listing.txt
+          grep -q 'LICENSES/uv-LICENSE' listing.txt
+          grep -q 'LICENSES/python-LICENSE' listing.txt
+          grep -q 'toolchain/uv-' listing.txt
+          grep -q 'toolchain/python-' listing.txt
+      - name: Install the locked bundle offline
+        env:
+          TROVIUM_HOME: ${{ runner.temp }}/trovium-home
+          TROVIUM_BIN: ${{ runner.temp }}/trovium-bin
+          TROVIUM_CONFIG: ${{ runner.temp }}/trovium-config/config.ini
+          TROVIUM_STATE: ${{ runner.temp }}/trovium-state
+          TROVIUM_DATA: ${{ runner.temp }}/trovium-data
+          TROVIUM_CACHE: ${{ runner.temp }}/trovium-cache
+          TROVIUM_LIBRARY: ${{ runner.temp }}/library
+          TROVIUM_SOURCE: ${{ runner.temp }}/source
+        run: |
+          set -euo pipefail
+          export HOME="$TROVIUM_HOME"
+          export TROVIUM_BIN_DIR="$TROVIUM_BIN"
+          export TROVIUM_CONFIG_FILE="$TROVIUM_CONFIG"
+          export TROVIUM_STATE_HOME="$TROVIUM_STATE"
+          export TROVIUM_DATA_HOME="$TROVIUM_DATA"
+          export TROVIUM_CACHE_HOME="$TROVIUM_CACHE"
+          export PATH="$TROVIUM_BIN_DIR:$PATH"
+          export UV_OFFLINE=1
+          export HTTP_PROXY=http://127.0.0.1:9
+          export HTTPS_PROXY=http://127.0.0.1:9
+          export ALL_PROXY=http://127.0.0.1:9
+          mkdir -p "$HOME" "$TROVIUM_LIBRARY" "$TROVIUM_SOURCE"
+          bundle="dist/trovium-${BUNDLE_VERSION}-${{ matrix.platform }}.tar.gz"
+          start="$(date +%s)"
+          bash install.sh --bundle "$bundle" --non-interactive \
+            --library-root "$TROVIUM_LIBRARY" --source "$TROVIUM_SOURCE" \
+            --json compact > install.json
+          elapsed=$(( $(date +%s) - start ))
+          echo "install_seconds=$elapsed"
+          test "$elapsed" -lt 300
+          jq -e '.status == "ok" or .status == "degraded"' install.json >/dev/null
+          jq -e --arg v "$BUNDLE_VERSION" '.version == $v' install.json >/dev/null
+          "$TROVIUM_BIN_DIR/trovium-ingest" --help >/dev/null
+          trovium-deploy status --json compact > status.json
+          jq -e --arg v "$BUNDLE_VERSION" '.version == $v' status.json >/dev/null
+          jq -e '[.checks[] | select(.name == "self_check" and .status == "pass")] | length == 1' status.json >/dev/null
+          trovium-deploy uninstall --json compact > uninstall.json
+          jq -e '.status == "ok"' uninstall.json >/dev/null
+          test ! -e "$TROVIUM_BIN_DIR/trovium-ingest"
+          test -f "$TROVIUM_CONFIG_FILE"
+      - name: Refuse musl hosts
+        run: |
+          bundle="dist/trovium-${BUNDLE_VERSION}-${{ matrix.platform }}.tar.gz"
+          docker run --rm \
+            -v "$PWD":/w:ro \
+            -v "$PWD/dist":/dist:ro \
+            -w /w \
+            -e BUNDLE="/dist/$(basename "$bundle")" \
+            alpine:3.20 sh -c '
+              set -e
+              apk add --no-cache bash coreutils >/dev/null
+              export HOME=/tmp/home
+              export TROVIUM_BIN_DIR=/tmp/bin
+              export TROVIUM_CONFIG_FILE=/tmp/config/config.ini
+              mkdir -p "$HOME" /tmp/library
+              code=0
+              bash install.sh --bundle "$BUNDLE" --non-interactive \
+                --library-root /tmp/library --json compact > /tmp/out.json || code=$?
+              test "$code" -eq 3
+              grep -q unsupported_platform /tmp/out.json
+              test ! -e "$TROVIUM_CONFIG_FILE"
+            '
