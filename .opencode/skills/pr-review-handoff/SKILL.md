@@ -91,9 +91,9 @@ gh pr view <N> --json number,title,headRefName,headRefOid,baseRefName,additions,
    title with the pinned SHA, scope note, environment block, findings by
    severity, minor notes, checked-without-findings, signature footer.
 
-8. **Deliver as a comment, not a verdict.** `gh pr comment <N> --body-file
-   <file>` is the default; `gh pr review --comment` behaves differently when
-   the authenticated account is the PR author and implies a formal review. Then
+8. **Deliver as a comment, not a verdict.** `gh pr comment` with `--body-file`
+   is the default; `gh pr review --comment` behaves differently when the
+   authenticated account is the PR author and implies a formal review. Then
    verify and report the URL:
 
    ```sh
