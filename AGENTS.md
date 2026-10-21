@@ -29,6 +29,10 @@ uv run mypy .           # `mypy .` is accepted and covers src/ + tests/ + tools/
 `scripts/check.sh` runs locally, at every git boundary, and in CI — the same
 command. Never declare work finished with it red (XXII).
 
+Long-running commands (the gate, full pytest, `verify.sh`, pre-commit hooks,
+builds, CI watches) must be started in the background and followed live; see
+`.opencode/skills/background-and-follow/SKILL.md`.
+
 ## Rules that gate you (they will refuse, not warn)
 
 - **No direct commits to `main`** — the pre-commit hook blocks the branch

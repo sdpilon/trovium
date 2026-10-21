@@ -135,7 +135,13 @@ def test_json_styles_contain_the_same_data(layout: Layout) -> None:
     )
 
     assert compact.returncode == pretty.returncode == 2
-    assert json.loads(compact.stdout) == json.loads(pretty.stdout)
+    compact_payload = json.loads(compact.stdout)
+    pretty_payload = json.loads(pretty.stdout)
+    # Two invocations can cross a one-second boundary; everything except the
+    # completion timestamp must be identical between the styles.
+    assert compact_payload.pop("finished_at")
+    assert pretty_payload.pop("finished_at")
+    assert compact_payload == pretty_payload
 
 
 def test_bootstrap_never_prints_client_credentials(
