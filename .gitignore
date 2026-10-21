@@ -12,6 +12,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+node_modules/
 AGENTS.local.md
 
 # macOS Finder metadata

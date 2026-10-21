@@ -24,8 +24,21 @@ jobs:
       - name: Install gate tooling
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q jq shellcheck
-          npm install -g prettier markdownlint-cli2
+          sudo apt-get install -y -q jq
+          # Keep this boundary on the same pinned versions as local runs and
+          # gates.yml: shellcheck comes from the checksum-verified release
+          # when .tool-versions pins it, and the Node linters come from the
+          # lockfile when one is present.
+          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+            bash .specify/gates/install-shellcheck.sh
+          else
+            sudo apt-get install -y -q shellcheck
+          fi
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install -g prettier markdownlint-cli2
+          fi
       - name: Sync the Python environment
         run: uv sync --frozen
       - name: Run canonical quality gates
