@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import sys
@@ -412,6 +413,7 @@ def _discard_fresh_install(
     uv_path: Path,
     tool_dir: Path,
     bin_dir: Path,
+    commands: tuple[str, ...],
     version: str,
 ) -> bool:
     """Remove a failed first installation and record the outcome.
@@ -419,30 +421,44 @@ def _discard_fresh_install(
     Without a previous version there is nothing to restore. Leaving the
     promoted tool environment and command links behind would make the next
     plain install refuse as unmanaged, so remove them before reporting the
-    failure.
+    failure. ``uv tool uninstall`` removes the environment on macOS but can
+    leave the directory behind on Linux, so remove it explicitly too.
     """
 
-    try:
+    leftover = False
+    # Fall through to the explicit removal below if uv cannot do it.
+    with contextlib.suppress(DeployError):
         uv_module.tool_uninstall(uv_path, tool_dir=tool_dir, bin_dir=bin_dir)
+    for command in commands:
+        link = bin_dir / command
+        if not link.is_symlink():
+            continue
+        try:
+            link.resolve().relative_to(tool_dir)
+        except (OSError, ValueError):
+            continue
+        try:
+            link.unlink()
+        except OSError:
+            leftover = True
+    try:
+        _remove_directory(tool_dir, label="tool environment")
     except DeployError:
-        report.actions.append(
-            Action(
-                action="uv_uninstall",
-                target=version,
-                outcome=ActionOutcome.FAILED,
-                detail="could not remove the failed first installation",
-            )
-        )
-        return False
+        leftover = True
+    removed = not leftover
     report.actions.append(
         Action(
             action="uv_uninstall",
             target=version,
-            outcome=ActionOutcome.OK,
-            detail="removed the failed first installation",
+            outcome=ActionOutcome.OK if removed else ActionOutcome.FAILED,
+            detail=(
+                "removed the failed first installation"
+                if removed
+                else "could not fully remove the failed first installation"
+            ),
         )
     )
-    return True
+    return removed
 
 
 def _rollback(
@@ -722,6 +738,7 @@ def _install(opts: InstallOptions, report: Report) -> Report:
                         uv_path=uv_path,
                         tool_dir=active_tool,
                         bin_dir=bin_dir,
+                        commands=info.wheel.commands,
                         version=info.version,
                     )
                 remedy = (
@@ -801,6 +818,7 @@ def _install(opts: InstallOptions, report: Report) -> Report:
                     uv_path=uv_path,
                     tool_dir=active_tool,
                     bin_dir=bin_dir,
+                    commands=info.wheel.commands,
                     version=info.version,
                 )
             raise
