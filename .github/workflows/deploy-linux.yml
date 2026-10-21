@@ -40,10 +40,25 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
-      - name: Install jq
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install gate tooling
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q jq
+          # The acceptance step runs the parity gate, so this boundary must
+          # resolve the same pinned shellcheck and Node linters as local runs.
+          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+            bash .specify/gates/install-shellcheck.sh
+          else
+            sudo apt-get install -y -q shellcheck
+          fi
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install -g prettier markdownlint-cli2
+          fi
       - name: Sync the Python environment
         run: uv sync --frozen
       - name: Deployment unit, contract, and integration tests
