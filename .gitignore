@@ -13,3 +13,6 @@ build/
 .mypy_cache/
 .ruff_cache/
 AGENTS.local.md
+
+# macOS Finder metadata
+.DS_Store

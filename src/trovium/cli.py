@@ -12,12 +12,13 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from trovium.adapters.qbittorrent import AdapterError
 from trovium.adapters.qbittorrent import QbittorrentClient as QbittorrentClient
 from trovium.classify import Classification, Kind, classify
+from trovium.config import ConfigError, load_config
 from trovium.library import compare_existing, resolve_destination
 from trovium.placement import apply_placement, plan_placement
 from trovium.record import (
@@ -50,23 +51,26 @@ EXIT_CLIENT_FAILURE = 3
 CLIENT_URL_ENV = "TROVIUM_CLIENT_URL"
 CLIENT_USERNAME_ENV = "TROVIUM_CLIENT_USERNAME"
 CLIENT_PASSWORD_ENV = "TROVIUM_CLIENT_PASSWORD"
+LIBRARY_ROOT_ENV = "TROVIUM_LIBRARY_ROOT"
+SOURCE_ENV = "TROVIUM_SOURCE"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The option set of contracts/cli.md, exactly."""
+    """The option set of contracts/cli.md plus config fallbacks."""
     parser = argparse.ArgumentParser(
         prog="trovium-ingest",
         description="Ingest media from a download client or a local directory.",
     )
-    parser.add_argument("--client-url", default=os.environ.get(CLIENT_URL_ENV))
-    parser.add_argument("--source")
-    parser.add_argument("--library-root", required=True)
+    parser.add_argument("--client-url", default=None)
+    parser.add_argument("--source", default=None)
+    parser.add_argument("--library-root", default=None)
     parser.add_argument(
-        "--category", choices=[item.value for item in Category], default=Category.ALL
+        "--config",
+        default=None,
+        help="configuration file (default: XDG trovium/config.ini)",
     )
-    parser.add_argument(
-        "--mode", choices=[item.value for item in Mode], default=Mode.MOVE
-    )
+    parser.add_argument("--category", choices=[item.value for item in Category])
+    parser.add_argument("--mode", choices=[item.value for item in Mode])
     parser.add_argument(
         "--post-ingest",
         choices=[item.value for item in PostIngest],
@@ -74,12 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="client-side policy after a successful placement (client mode only)",
     )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--on-fail", choices=[item.value for item in OnFail], default=OnFail.CONTINUE
-    )
-    parser.add_argument(
-        "--json", choices=[item.value for item in JsonStyle], default=JsonStyle.PRETTY
-    )
+    parser.add_argument("--on-fail", choices=[item.value for item in OnFail])
+    parser.add_argument("--json", choices=[item.value for item in JsonStyle])
     return parser
 
 
@@ -87,20 +87,60 @@ class MisuseError(Exception):
     """A refused invocation; carries the message naming the cause."""
 
 
-def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
-    """Refuse misuse before any work (contracts/cli.md)."""
-    source = Path(args.source).expanduser().resolve() if args.source else None
-    client_url: str | None = args.client_url
+@dataclass(frozen=True)
+class ResolvedOptions:
+    """The effective options after CLI, environment, and config precedence."""
 
+    library_root: Path
+    source: Path | None
+    client_url: str | None
+    category: Category
+    mode: Mode
+    post_ingest: PostIngest | None
+    on_fail: OnFail
+    json_style: JsonStyle
+    client_username_env: str
+    client_password_env: str
+
+
+def _first[T](*values: T | None) -> T | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def resolve_options(args: argparse.Namespace) -> ResolvedOptions:
+    """Load config and resolve CLI > environment > config > defaults."""
+
+    try:
+        loaded = load_config(args.config, required=args.config is not None)
+    except ConfigError as error:
+        raise MisuseError(str(error)) from error
+    config = loaded.config if loaded is not None else None
+    if loaded is not None:
+        for warning in loaded.warnings:
+            sys.stderr.write(f"warning: {warning}\n")
+
+    source_value = _first(args.source, os.environ.get(SOURCE_ENV))
+    client_value = _first(args.client_url, os.environ.get(CLIENT_URL_ENV))
+    if source_value is None and client_value is None and config is not None:
+        if config.source.mode == "disk":
+            source_value = config.source.path
+        elif config.source.mode == "client":
+            client_value = config.source.client_url
+
+    source = Path(source_value).expanduser().resolve() if source_value else None
+    client_url = str(client_value) if client_value else None
     if source is not None and client_url:
         raise MisuseError("--source cannot be combined with --client-url")
-    if source is not None and args.post_ingest is not None:
-        raise MisuseError("--post-ingest applies only to client mode, not to --source")
     if source is None and not client_url:
         raise MisuseError(
             "no source declared: pass --source or set "
-            f"{CLIENT_URL_ENV} (or --client-url)"
+            f"{CLIENT_URL_ENV} (or --client-url, or configure [source])"
         )
+    if source is not None and args.post_ingest is not None:
+        raise MisuseError("--post-ingest applies only to client mode, not to --source")
     if source is not None:
         if not source.exists():
             raise MisuseError(f"--source does not exist: {source}")
@@ -109,7 +149,17 @@ def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
         if not os.access(source, os.R_OK | os.X_OK):
             raise MisuseError(f"--source is not readable: {source}")
 
-    library_root = Path(args.library_root).expanduser().resolve()
+    library_value = _first(
+        args.library_root,
+        os.environ.get(LIBRARY_ROOT_ENV),
+        config.library_root if config is not None else None,
+    )
+    if library_value is None:
+        raise MisuseError(
+            "--library-root is required: pass it, set "
+            f"{LIBRARY_ROOT_ENV}, or configure [library] root"
+        )
+    library_root = Path(library_value).expanduser().resolve()
     if not library_root.exists():
         raise MisuseError(f"--library-root does not exist: {library_root}")
     if not library_root.is_dir():
@@ -117,23 +167,65 @@ def validate(args: argparse.Namespace) -> tuple[Path, Path | None, str | None]:
     if not os.access(library_root, os.W_OK | os.X_OK):
         raise MisuseError(f"--library-root is not writable: {library_root}")
 
-    return library_root, source, client_url
+    category_value = _first(
+        args.category,
+        config.ingest.category.value if config is not None else None,
+        Category.ALL.value,
+    )
+    mode_value = _first(
+        args.mode,
+        config.ingest.mode.value if config is not None else None,
+        Mode.MOVE.value,
+    )
+    on_fail_value = _first(
+        args.on_fail,
+        config.ingest.on_fail.value if config is not None else None,
+        OnFail.CONTINUE.value,
+    )
+    json_value = _first(
+        args.json,
+        config.ingest.json.value if config is not None else None,
+        JsonStyle.PRETTY.value,
+    )
+    post_ingest: PostIngest | None = None
+    if source is None and client_url:
+        post_value = _first(
+            args.post_ingest,
+            config.ingest.post_ingest.value if config is not None else None,
+            PostIngest.KEEP.value,
+        )
+        post_ingest = PostIngest(str(post_value))
+
+    return ResolvedOptions(
+        library_root=library_root,
+        source=source,
+        client_url=client_url,
+        category=Category(str(category_value)),
+        mode=Mode(str(mode_value)),
+        post_ingest=post_ingest,
+        on_fail=OnFail(str(on_fail_value)),
+        json_style=JsonStyle(str(json_value)),
+        client_username_env=(
+            config.source.client_username_env
+            if config is not None
+            else CLIENT_USERNAME_ENV
+        ),
+        client_password_env=(
+            config.source.client_password_env
+            if config is not None
+            else CLIENT_PASSWORD_ENV
+        ),
+    )
 
 
-def declared_options(
-    args: argparse.Namespace, library_root: Path, source: Path | None
-) -> Declared:
+def declared_options(resolved: ResolvedOptions) -> Declared:
     """Echo the run's declared options into the record."""
     return Declared(
-        library_root=str(library_root),
-        category=Category(args.category),
-        mode=Mode(args.mode),
-        on_fail=OnFail(args.on_fail),
-        post_ingest=(
-            None
-            if source is not None
-            else PostIngest(args.post_ingest or PostIngest.KEEP)
-        ),
+        library_root=str(resolved.library_root),
+        category=resolved.category,
+        mode=resolved.mode,
+        on_fail=resolved.on_fail,
+        post_ingest=resolved.post_ingest,
     )
 
 
@@ -439,33 +531,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        library_root, source, client_url = validate(args)
+        resolved = resolve_options(args)
     except MisuseError as misuse:
         fail(str(misuse))
         return EXIT_MISUSE
 
-    declared = declared_options(args, library_root, source)
+    declared = declared_options(resolved)
     dry_run = bool(args.dry_run)
 
-    if source is not None:
-        summary = run_disk(source, library_root, declared, dry_run)
+    if resolved.source is not None:
+        summary = run_disk(resolved.source, resolved.library_root, declared, dry_run)
     else:
-        assert client_url is not None  # validate() guarantees it
+        assert resolved.client_url is not None  # resolve_options() guarantees it
         client = QbittorrentClient(
-            client_url,
-            os.environ.get(CLIENT_USERNAME_ENV),
-            os.environ.get(CLIENT_PASSWORD_ENV),
+            resolved.client_url,
+            os.environ.get(resolved.client_username_env),
+            os.environ.get(resolved.client_password_env),
         )
         try:
             client.login()
-            summary = run_client(client, library_root, declared, dry_run)
+            summary = run_client(client, resolved.library_root, declared, dry_run)
         except AdapterError as error:
             fail(str(error))
             return EXIT_CLIENT_FAILURE
         finally:
             client.close()
 
-    emit(summary, JsonStyle(args.json))
+    emit(summary, resolved.json_style)
     return EXIT_OK
 
 

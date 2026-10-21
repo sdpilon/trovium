@@ -37,21 +37,21 @@ Bootstrap failures before the Python CLI starts emit the same top-level object:
 
 ## Action
 
-| Field     | Type           | Required | Notes                                                                                                                                                                                                          |
-| --------- | -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action`  | string         | yes      | Stable action name: `verify_bundle`, `preflight`, `stage`, `self_check`, `promote`, `rollback`, `write_config`, `write_record`, `uv_install`, `uv_uninstall`, `remove_command`, `remove_state`, `purge_config` |
-| `target`  | string         | yes      | Path, command, or version the action applies to                                                                                                                                                                |
-| `outcome` | string enum    | yes      | `ok`, `skipped`, `failed`                                                                                                                                                                                      |
-| `detail`  | string or null | yes      | Secret-free explanation                                                                                                                                                                                        |
+| Field     | Type           | Required | Notes                                                                                                                                                                                                                   |
+| --------- | -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action`  | string         | yes      | Stable action name: `verify_bundle`, `cache`, `preflight`, `stage`, `self_check`, `promote`, `rollback`, `write_config`, `write_record`, `uv_install`, `uv_uninstall`, `remove_command`, `remove_state`, `purge_config` |
+| `target`  | string         | yes      | Path, command, or version the action applies to                                                                                                                                                                         |
+| `outcome` | string enum    | yes      | `ok`, `skipped`, `failed`                                                                                                                                                                                               |
+| `detail`  | string or null | yes      | Secret-free explanation                                                                                                                                                                                                 |
 
 ## Check
 
-| Field    | Type           | Required | Notes                                                                                                                                                           |
-| -------- | -------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`   | string         | yes      | `platform`, `bundle`, `config`, `library_path`, `source_path`, `source_configured`, `credentials`, `installed_commands`, `command_path`, `record`, `self_check` |
-| `status` | string enum    | yes      | `pass`, `warn`, `fail`                                                                                                                                          |
-| `detail` | string         | yes      | Secret-free observation                                                                                                                                         |
-| `remedy` | string or null | yes      | Actionable guidance when not `pass`                                                                                                                             |
+| Field    | Type           | Required | Notes                                                                                                                                                                       |
+| -------- | -------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`   | string         | yes      | `platform`, `bundle`, `config`, `library_path`, `source_path`, `source_configured`, `credentials`, `installed_commands`, `command_path`, `record`, `rollback`, `self_check` |
+| `status` | string enum    | yes      | `pass`, `warn`, `fail`                                                                                                                                                      |
+| `detail` | string         | yes      | Secret-free observation                                                                                                                                                     |
+| `remedy` | string or null | yes      | Actionable guidance when not `pass`                                                                                                                                         |
 
 A `fail` check makes the report `error` unless the check is specifically
 informational. `warn` checks produce `degraded` for `status` and do not fail
