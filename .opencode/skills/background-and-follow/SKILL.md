@@ -1,29 +1,30 @@
 ---
 name: Background And Follow
-description: ALWAYS use when a command may take longer than ~20 seconds or is run in the background. Start it with the shell tool's background mode, then immediately follow its log or output path until completion. Covers scripts/check.sh, .specify/gates/verify.sh, pre-commit gate runs, full pytest, release bundle builds, Docker checks, and gh run watch. Prevents buffered wrapper output from being mistaken for a result. Do not use for fast read-only commands or commands that need interactive input.
+description: Use when a test or gate run required by the spec-gates extension will take longer than ~20 seconds. Covers scripts/check.sh, .specify/gates/verify.sh, the pre-commit hook that invokes them, and the CI gate run. Start it with the shell tool's background mode, then immediately follow its log or output path until completion. Prevents buffered wrapper output from being mistaken for a result. Do not use for targeted tests, file-scoped lints, builds, Docker checks, or commands that need interactive input.
 compatibility: Requires background command execution and a log or output path.
 ---
 
 # Background And Follow
 
-Long commands must stay visible. A command is not "running in the
-background" until a live follower is attached to its log or output.
+The spec-gates extension runs the same test and gate suite locally, at the
+git boundary, and in CI. Those runs must stay visible. A gate is not
+"running in the background" until a live follower is attached to its log or
+output.
 
 ## When to use
 
-Use this skill for jobs that take more than roughly 20 seconds or whose
-duration is unknown:
+Use this skill only for the test and gate runs the spec-gates extension
+requires:
 
-- `scripts/check.sh` and `.specify/gates/verify.sh`
-- pre-commit hooks, including `git commit`
-- the full `pytest` suite and deployment integration suites
-- `tools/release/build_bundle.py`, especially `--locked`
-- Docker verification runs
-- `gh run watch`, `gh pr checks --watch`, and other CI waits
+- `scripts/check.sh`, the `verify-quality` gate at every boundary
+- `.specify/gates/verify.sh` (also reached through `/speckit.gates.verify`)
+- pre-commit hooks, including a plain `git commit`
+- `gh run watch` / `gh pr checks --watch` while a gate-bearing pipeline runs
 
-Do not use it for status checks, one targeted test, a file-scoped lint, or
-anything else that finishes in a few seconds. Never background a command that
-needs interactive input.
+Do not use it for one targeted test, a file-scoped lint, a standalone
+`uv run pytest`, release builds, Docker checks, or anything else that
+finishes in a few seconds. Never background a command that needs interactive
+input.
 
 ## The rule
 
@@ -45,9 +46,7 @@ needs interactive input.
 | `scripts/check.sh`                        | `${TMPDIR:-/tmp}/trovium-gate.log` (truncated at start)            |
 | `.specify/gates/verify.sh --boundary ...` | gate log for `custom`, then the command output for `spec`/`parity` |
 | `git commit` (pre-commit)                 | gate log; the hook runs `verify.sh`                                |
-| Full `pytest`                             | the background output path                                         |
 | `gh run watch` / `gh pr checks --watch`   | its own stream                                                     |
-| `build_bundle.py --locked`, Docker runs   | the background output path                                         |
 
 For a local gate, follow the gate log:
 
