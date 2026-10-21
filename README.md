@@ -5,7 +5,8 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha.** The first slice is the **import/ingest** step, with
+> **Status: pre-alpha.** Two commands ship today: the **import/ingest** step
+> (`trovium-ingest`) and **server deployment** (`trovium-deploy`), with
 > qBittorrent as the first download client.
 
 ## Why
@@ -41,7 +42,10 @@ The import/ingest step. It takes candidates from either a download client
 (qBittorrent, through the single adapter) or a directory of media already on
 disk, classifies each as a movie / TV / unresolvable using its own names only,
 places resolvable items into the library (folder structure derived; original
-file names preserved), and prints a machine-readable JSON run record.
+file names preserved), and prints a machine-readable JSON run record. Every
+candidate appears in the record once with a `disposition` (`ingested`,
+`already_handled`, `not_yet_complete`, `unresolvable`,
+`rejected_out_of_scope`, or `error`), so nothing is dropped silently.
 
 ```sh
 # disk source — no download client involved
@@ -57,17 +61,27 @@ export TROVIUM_CLIENT_PASSWORD=...
 uv run trovium-ingest --library-root ~/Media
 ```
 
+The command exits `0` when the run completed — per-item problems are recorded,
+not fatal — `2` on misuse, and `3` on a run-level client failure (unreachable,
+unauthenticated, or a malformed response).
+
 | Option                              | Default              | Notes                                                                                  |
 | ----------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
 | `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url` |
 | `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                             |
 | `--library-root PATH`               | required             | library destination root                                                               |
+| `--config PATH`                     | XDG                  | configuration file (default: XDG `trovium/config.ini`)                                 |
 | `--category {movie,tv,all}`         | `all`                | declared run scope                                                                     |
 | `--mode {move,copy,hardlink}`       | `move`               | placement semantics                                                                    |
 | `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                  |
 | `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                        |
 | `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                              |
 | `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                   |
+
+`--source`, `--client-url`, `--library-root`, and `--config` also read
+environment fallbacks (`TROVIUM_SOURCE`, `TROVIUM_CLIENT_URL`,
+`TROVIUM_LIBRARY_ROOT`, `TROVIUM_CONFIG_FILE`). Options resolve flags →
+environment → config file → built-in defaults.
 
 Full contracts live in
 [`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/).
@@ -108,6 +122,7 @@ Inspect, upgrade, or remove the installation:
 
 ```sh
 trovium-deploy status
+trovium-deploy check --version 0.2.0  # fast health check; exit 1 when not current
 bash install.sh --version 0.2.0 --non-interactive --library-root /srv/media
 trovium-deploy uninstall          # keeps config and media
 trovium-deploy uninstall --purge  # also removes config, never media
@@ -128,17 +143,19 @@ Linux is the supported server target.
 
 ## Development
 
-Requires [`uv`](https://docs.astral.sh/uv/).
+Requires [`uv`](https://docs.astral.sh/uv/). The gate also runs the pinned Node
+linters (`npm ci`) and shellcheck (pinned in `.tool-versions`).
 
 ```sh
 uv sync            # create the environment and install dev dependencies
+npm ci             # once: pinned prettier/markdownlint-cli2 for the gate
 scripts/check.sh   # the full quality gate (see below)
 ```
 
 `scripts/check.sh` is the single canonical check — everything the quality
 gate runs: ruff (lint + format), mypy, pytest, and the markdown / file-format /
-shell linters. The same command runs locally and at every gate boundary. The
-Python steps directly, if you prefer:
+shell linters. The same command runs locally and at every gate boundary. Run
+the Python steps directly, if you prefer:
 
 ```sh
 uv run ruff check .
