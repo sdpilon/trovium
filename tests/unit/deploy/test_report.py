@@ -82,6 +82,26 @@ def test_status_precedence_is_error_then_degraded_then_ok() -> None:
     )
 
 
+def test_error_status_without_explicit_error_gets_a_named_failure() -> None:
+    report = Report(
+        operation=Operation.STATUS,
+        status=ReportStatus.ERROR,
+        checks=[
+            Check(
+                name="library_path",
+                status=CheckStatus.FAIL,
+                detail="/media is not writable",
+                remedy="Fix the directory permissions.",
+            )
+        ],
+    ).finish()
+
+    assert report.error is not None
+    assert report.error.code == "unwritable_path"
+    assert report.error.message == "/media is not writable"
+    assert report.error.remedy == "Fix the directory permissions."
+
+
 def test_report_keeps_stable_nulls_and_error_shape() -> None:
     payload = Report(operation=Operation.STATUS).to_json()
     for key in (

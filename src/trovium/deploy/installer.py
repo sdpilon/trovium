@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shutil
 import sys
@@ -426,12 +425,19 @@ def _discard_fresh_install(
     """
 
     leftover = False
+    uv_removed = True
     # Fall through to the explicit removal below if uv cannot do it.
-    with contextlib.suppress(DeployError):
+    try:
         uv_module.tool_uninstall(uv_path, tool_dir=tool_dir, bin_dir=bin_dir)
+    except DeployError:
+        uv_removed = False
     for command in commands:
         link = bin_dir / command
         if not link.is_symlink():
+            # uv normally creates symlinks. A regular file can only be left by
+            # a failed uv uninstall, and claiming removal would be a lie.
+            if not uv_removed and (link.exists() or link.is_symlink()):
+                leftover = True
             continue
         try:
             link.resolve().relative_to(tool_dir)
@@ -885,6 +891,24 @@ def check(version: str) -> Report | None:
         return None
     if not _commands_executable(Path(record.bin_dir), record.commands):
         return None
+    try:
+        loaded = load_config(Path(record.config_path), required=True)
+    except ConfigError:
+        return None
+    if loaded is None:
+        return None
+    checks = [
+        Check(
+            name="record",
+            status=CheckStatus.PASS,
+            detail="version, config, and commands are current",
+        ),
+        *_config_checks(loaded.config),
+    ]
+    # The fast path must not hide a warning or a failing path behind "noop".
+    # Fall through so the full install emits the single authoritative report.
+    if any(check.status is not CheckStatus.PASS for check in checks):
+        return None
     report = Report(
         operation=Operation.INSTALL,
         status=ReportStatus.NOOP,
@@ -894,13 +918,7 @@ def check(version: str) -> Report | None:
         install_root=record.tool_dir,
         bin_dir=record.bin_dir,
         commands=list(record.commands),
-        checks=[
-            Check(
-                name="record",
-                status=CheckStatus.PASS,
-                detail="version, config, and commands are current",
-            )
-        ],
+        checks=checks,
         next_steps=["Run trovium-deploy status for the full installation view."],
     )
     return report.finish()

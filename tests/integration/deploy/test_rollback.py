@@ -20,7 +20,7 @@ from tests.deploy_support import (
 from trovium.deploy import installer
 from trovium.deploy import uv as uv_module
 from trovium.deploy.installer import InstallOptions
-from trovium.deploy.report import ActionOutcome, DeployError, now
+from trovium.deploy.report import ActionOutcome, DeployError, Operation, Report, now
 from trovium.deploy.state import CommandCheck, SelfCheckResult
 
 
@@ -90,6 +90,35 @@ def _installed_version(layout: Layout) -> str:
     matches = list(layout.data.rglob("trovium-*.dist-info"))
     assert len(matches) == 1, matches
     return matches[0].name.removesuffix(".dist-info").split("-", 1)[1]
+
+
+def test_failed_uv_cleanup_does_not_claim_regular_links_were_removed(
+    layout: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout.bin.mkdir(parents=True)
+    (layout.bin / "trovium-ingest").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    tool_dir = layout.data / "trovium" / "tools" / "trovium"
+    tool_dir.mkdir(parents=True)
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise DeployError("install_failed", "uv unavailable", "Retry.")
+
+    monkeypatch.setattr(uv_module, "tool_uninstall", _fail)
+    result = Report(operation=Operation.INSTALL)
+
+    removed = installer._discard_fresh_install(
+        result,
+        uv_path=Path("uv"),
+        tool_dir=tool_dir,
+        bin_dir=layout.bin,
+        commands=("trovium-ingest",),
+        version="0.1.0",
+    )
+
+    assert removed is False
+    assert result.actions[-1].action == "uv_uninstall"
+    assert result.actions[-1].outcome is ActionOutcome.FAILED
+    assert (layout.bin / "trovium-ingest").exists()
 
 
 def test_cache_failure_happens_before_promotion(

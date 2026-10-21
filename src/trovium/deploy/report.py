@@ -153,6 +153,8 @@ class Report:
     schema_version: int = 1
 
     def finish(self) -> Report:
+        if self.status is ReportStatus.ERROR and self.error is None:
+            self.error = _error_for_checks(self.checks)
         if self.finished_at is None:
             self.finished_at = now()
         return self
@@ -249,6 +251,31 @@ def status_for(checks: Iterable[Check]) -> ReportStatus:
     if any(check.status is CheckStatus.WARN for check in items):
         return ReportStatus.DEGRADED
     return ReportStatus.OK
+
+
+def _error_for_checks(checks: Iterable[Check]) -> ErrorInfo:
+    """Give an error-status report the named failure the contract requires."""
+
+    failing = next(
+        (check for check in checks if check.status is CheckStatus.FAIL), None
+    )
+    if failing is None:
+        return ErrorInfo(
+            "install_failed",
+            "installation is not healthy",
+            "Run trovium-deploy status and fix the failing check.",
+        )
+    code = {
+        "library_path": "unwritable_path",
+        "config": "config_invalid",
+        "installed_commands": "install_failed",
+        "self_check": "self_check_failed",
+    }.get(failing.name, "install_failed")
+    return ErrorInfo(
+        code,
+        failing.detail,
+        failing.remedy or "Fix the failing check and retry.",
+    )
 
 
 def render(report: Report, style: JsonStyle) -> str:

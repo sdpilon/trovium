@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -36,6 +37,21 @@ def test_check_reports_current_and_stale_versions(layout: Layout, bundle: Path) 
     assert payload["version"] == "0.1.0"
 
     stale = deploy(layout, "check", "--version", "9.9.9", "--json", "compact")
+    assert stale.returncode == 1
+    assert stale.stdout.strip() == ""
+
+
+def test_check_falls_through_when_the_library_is_missing(
+    layout: Layout, bundle: Path
+) -> None:
+    report(install(layout, bundle, _standard(layout)))
+    shutil.rmtree(layout.library)
+
+    stale = deploy(layout, "check", "--version", "0.1.0", "--json", "compact")
+
+    # The fast path must not claim noop for an installation whose config is no
+    # longer healthy; install.sh then runs the full install and emits the one
+    # authoritative (degraded/error) report.
     assert stale.returncode == 1
     assert stale.stdout.strip() == ""
 
