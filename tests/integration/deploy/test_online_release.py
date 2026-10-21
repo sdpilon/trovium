@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.deploy_support import Layout, deploy, install, report
+from tests.deploy_support import Layout, deploy, install, report, run
 from tests.integration.deploy.release_server import release_server
 
 
@@ -53,6 +53,52 @@ def test_default_online_install_resolves_the_latest_version(
     assert completed.returncode == 0
     assert payload["version"] == "0.1.0"
     assert payload["status"] in {"ok", "degraded"}
+
+
+def test_bootstrap_status_resolves_latest_without_an_installed_command(
+    layout: Layout, bundle: Path
+) -> None:
+    with release_server(bundle, "0.1.0") as (base_url, _root):
+        completed = run(
+            layout,
+            [
+                "bash",
+                "install.sh",
+                "--status",
+                "--release-base-url",
+                base_url,
+                "--json",
+                "compact",
+            ],
+        )
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert payload["operation"] == "status"
+    assert payload["status"] == "not_installed"
+
+
+def test_bootstrap_uninstall_resolves_latest_without_an_installed_command(
+    layout: Layout, bundle: Path
+) -> None:
+    with release_server(bundle, "0.1.0") as (base_url, _root):
+        completed = run(
+            layout,
+            [
+                "bash",
+                "install.sh",
+                "--uninstall",
+                "--release-base-url",
+                base_url,
+                "--json",
+                "compact",
+            ],
+        )
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert payload["operation"] == "uninstall"
+    assert payload["status"] == "noop"
 
 
 def test_online_reinstall_uses_the_installed_check_fast_path(

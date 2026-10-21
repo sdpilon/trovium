@@ -57,6 +57,25 @@ die() {
     exit "$status"
 }
 
+# first_path <dir> <glob> <-f|-d>: print the first match. Never pipes find into
+# head: with pipefail that SIGPIPEs a multi-match find and turns a malformed
+# bundle into an "internal" abort instead of a named bundle_invalid refusal.
+first_path() {
+    local dir="$1" pattern="$2" kind="${3:--f}" candidate
+    for candidate in "$dir"/$pattern; do
+        [ -e "$candidate" ] || continue
+        if [ "$kind" = "-d" ]; then
+            [ -d "$candidate" ] || continue
+            printf '%s\n' "${candidate%/}"
+            return 0
+        fi
+        [ -f "$candidate" ] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
+
 # shellcheck disable=SC2317,SC2329  # invoked indirectly by trap
 on_unexpected_failure() {
     local status=$?
@@ -204,7 +223,7 @@ extract_bundle() {
         die "bundle_invalid" "cannot extract bundle: $BUNDLE_FILE" \
             "Download the release bundle again." 4
     fi
-    BUNDLE_DIR="$(find "$TMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    BUNDLE_DIR="$(first_path "$TMP_DIR" '*' -d || true)"
     if [ -z "$BUNDLE_DIR" ] || [ ! -f "$BUNDLE_DIR/manifest.json" ]; then
         die "bundle_invalid" "bundle does not contain a manifest.json" \
             "Download the release bundle again." 4
@@ -325,7 +344,7 @@ extract_bundle
 uv_path="${TROVIUM_TEST_UV:-}"
 python_path="${TROVIUM_TEST_PYTHON:-}"
 if [ -z "$uv_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
-    uv_path="$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'uv-*' | head -n 1)"
+    uv_path="$(first_path "$BUNDLE_DIR/toolchain" 'uv-*' -f || true)"
 fi
 if [ -z "$uv_path" ]; then
     uv_path="$(command -v uv || true)"
@@ -335,7 +354,7 @@ if [ -z "$uv_path" ]; then
         "Download a complete release bundle or install uv." 3
 fi
 if [ -z "$python_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
-    python_path="$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'python-*.tar.gz' | head -n 1)"
+    python_path="$(first_path "$BUNDLE_DIR/toolchain" 'python-*.tar.gz' -f || true)"
 fi
 if [ -z "$python_path" ]; then
     python_path="$(command -v python3.13 || true)"
@@ -377,7 +396,7 @@ case "$python_minor" in
         ;;
 esac
 
-wheel="$(find "$BUNDLE_DIR/wheelhouse" -maxdepth 1 -type f -name 'trovium-*.whl' | head -n 1)"
+wheel="$(first_path "$BUNDLE_DIR/wheelhouse" 'trovium-*.whl' -f || true)"
 if [ -z "$wheel" ]; then
     die "bundle_invalid" "bundle contains no trovium wheel" \
         "Download the release bundle again." 4
@@ -386,7 +405,7 @@ fi
 deploy_args=("$MODE")
 if [ "$MODE" = "install" ]; then
     deploy_args+=("--bundle" "$BUNDLE_DIR")
-    if [ -z "${TROVIUM_TEST_UV:-}" ] && [ -n "$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'uv-*' 2>/dev/null | head -n 1)" ]; then
+    if [ -z "${TROVIUM_TEST_UV:-}" ] && [ -n "$(first_path "$BUNDLE_DIR/toolchain" 'uv-*' -f || true)" ]; then
         :
     else
         deploy_args+=("--uv" "$uv_path" "--python" "$python_path")

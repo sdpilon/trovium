@@ -58,8 +58,10 @@ aarch64 runners and uploads the assets to the tag's GitHub release.
 
 ## Refreshing the lock
 
-1. Pick the uv release and the python-build-standalone release. Both must offer
-   static musl builds for `x86_64` and `aarch64`.
+1. Pick the uv release and the python-build-standalone release for glibc
+   `x86_64` and `aarch64`. musl artifacts are not part of this lock: the
+   bootstrap refuses musl hosts with `unsupported_platform` until a musl
+   toolchain has been verified on a real musl host.
 2. Read the published digests from the release API:
    `gh api repos/astral-sh/uv/releases/tags/<uv-version>` and
    `gh api repos/astral-sh/python-build-standalone/releases/tags/<build>`.

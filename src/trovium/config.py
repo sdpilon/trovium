@@ -375,22 +375,6 @@ def tighten_permissions(path: Path) -> bool:
     return True
 
 
-def config_matches(
-    config: TroviumConfig,
-    *,
-    library_root: Path | None,
-    source_path: Path | None,
-    client_url: str | None,
-) -> bool:
-    """Compare the effective values an install requested with the file."""
-
-    if library_root is not None and config.library_root != library_root:
-        return False
-    if source_path is not None and config.source.path != source_path:
-        return False
-    return not (client_url is not None and config.source.client_url != client_url)
-
-
 __all__ = [
     "CONFIG_FILE_ENV",
     "SCHEMA_VERSION",
@@ -399,7 +383,6 @@ __all__ = [
     "LoadedConfig",
     "SourceSettings",
     "TroviumConfig",
-    "config_matches",
     "config_path",
     "copy_config",
     "load_config",

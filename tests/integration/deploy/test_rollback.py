@@ -86,6 +86,90 @@ def _direct_install(layout: Layout, bundle: Path) -> None:
     )
 
 
+def _installed_version(layout: Layout) -> str:
+    matches = list(layout.data.rglob("trovium-*.dist-info"))
+    assert len(matches) == 1, matches
+    return matches[0].name.removesuffix(".dist-info").split("-", 1)[1]
+
+
+def test_cache_failure_happens_before_promotion(
+    layout: Layout, bundle: Path, tmp_path: Path
+) -> None:
+    extracted = _extract(bundle, tmp_path / "bundle")
+    (layout.state / "trovium").mkdir(parents=True)
+    (layout.state / "trovium" / "cache").write_text("blocked", encoding="utf-8")
+
+    with pytest.raises(DeployError) as failure:
+        _direct_install(layout, extracted)
+
+    assert failure.value.code == "unwritable_path"
+    assert not (layout.bin / "trovium-ingest").exists()
+    assert not (layout.state / "trovium" / "deployment.json").exists()
+
+    (layout.state / "trovium" / "cache").unlink()
+    _direct_install(layout, extracted)
+    assert _installed_version(layout) == "0.1.0"
+
+
+def test_first_install_record_failure_removes_the_environment(
+    layout: Layout, bundle: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extracted = _extract(bundle, tmp_path / "bundle")
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise DeployError(
+            "unwritable_path", "injected record failure", "Retry when fixed."
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(installer, "write_record", _fail)
+        with pytest.raises(DeployError) as failure:
+            _direct_install(layout, extracted)
+
+    assert failure.value.code == "unwritable_path"
+    assert not (layout.bin / "trovium-ingest").exists()
+    assert not (layout.state / "trovium" / "deployment.json").exists()
+    assert not (layout.data / "trovium" / "tools" / "trovium").exists()
+    partial = failure.value.report
+    assert partial is not None
+    actions = {action.action: action for action in partial.actions}
+    assert actions["write_record"].outcome is ActionOutcome.FAILED
+    assert actions["uv_uninstall"].outcome is ActionOutcome.OK
+
+    _direct_install(layout, extracted)
+    assert _installed_version(layout) == "0.1.0"
+
+
+def test_first_install_self_check_failure_removes_the_environment(
+    layout: Layout, bundle: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extracted = _extract(bundle, tmp_path / "bundle")
+    calls = {"count": 0}
+
+    def _staged_pass_active_fail(
+        bin_dir: Path, commands: tuple[str, ...]
+    ) -> SelfCheckResult:
+        calls["count"] += 1
+        return _passing() if calls["count"] == 1 else _failing()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(installer, "run_selfcheck", _staged_pass_active_fail)
+        with pytest.raises(DeployError) as failure:
+            _direct_install(layout, extracted)
+
+    assert failure.value.code == "self_check_failed"
+    assert not (layout.bin / "trovium-ingest").exists()
+    assert not (layout.state / "trovium" / "deployment.json").exists()
+    assert not (layout.data / "trovium" / "tools" / "trovium").exists()
+    partial = failure.value.report
+    assert partial is not None
+    actions = {action.action: action for action in partial.actions}
+    assert actions["uv_uninstall"].outcome is ActionOutcome.OK
+
+    _direct_install(layout, extracted)
+    assert _installed_version(layout) == "0.1.0"
+
+
 def test_failed_upgrade_keeps_the_previous_version(
     layout: Layout, bundle: Path, newer_bundle: Path, broken_bundle: Path
 ) -> None:
@@ -223,13 +307,20 @@ def test_recovery_after_interruption_converges_on_rerun(
     extracted = _extract(newer_bundle, tmp_path / "newer")
     _interrupt(monkeypatch, point)
 
-    with pytest.raises(DeployError):
+    with pytest.raises(DeployError) as failure:
         _direct_install(layout, extracted)
 
     record_after_failure = json.loads(
         (layout.state / "trovium" / "deployment.json").read_text()
     )
     assert record_after_failure["version"] == "0.1.0"
+    if point == "before_record_write":
+        partial = failure.value.report
+        assert partial is not None
+        actions = {action.action: action for action in partial.actions}
+        assert actions["write_record"].outcome is ActionOutcome.FAILED
+        assert actions["rollback"].outcome is ActionOutcome.OK
+        assert _installed_version(layout) == "0.1.0"
 
     recovered = report(install(layout, newer_bundle, _standard(layout)))
     assert recovered["version"] == "0.2.0"

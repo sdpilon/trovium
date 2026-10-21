@@ -64,6 +64,27 @@ def test_toolchain_lock_refuses_an_invalid_digest() -> None:
         builder.select_locked_assets(lock, "linux-x86_64")
 
 
+def test_tarball_writing_is_reproducible(tmp_path: Path) -> None:
+    import os
+
+    from tools.release.build_bundle import write_tarball
+
+    bundle = tmp_path / "bundle"
+    (bundle / "wheelhouse").mkdir(parents=True)
+    payload = bundle / "wheelhouse" / "trovium-0.1.0-py3-none-any.whl"
+    payload.write_bytes(b"wheel")
+    (bundle / "manifest.json").write_text("{}\n", encoding="utf-8")
+
+    first = tmp_path / "first.tar.gz"
+    os.utime(payload, (100, 100))
+    write_tarball(bundle, first)
+    second = tmp_path / "second.tar.gz"
+    os.utime(payload, (200, 200))
+    write_tarball(bundle, second)
+
+    assert first.read_bytes() == second.read_bytes()
+
+
 def test_build_wheel_stages_the_requested_version(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

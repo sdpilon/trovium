@@ -33,7 +33,7 @@ def test_failed_staged_self_check_keeps_the_active_version(
     assert payload["version"] == "0.1.0"
     assert "trovium-broken" in payload["error"]["message"]
     names = [action["action"] for action in payload["actions"]]
-    assert names[:2] == ["verify_bundle", "stage"]
+    assert names.index("verify_bundle") < names.index("cache") < names.index("stage")
     assert (layout.state / "trovium" / "deployment.json").read_bytes() == record_before
 
     status = json.loads(deploy(layout, "status", "--json", "compact").stdout)

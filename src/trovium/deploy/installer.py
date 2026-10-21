@@ -351,10 +351,98 @@ def _prepare_toolchain(
 def _cache_wheelhouse(info: bundle_module.BundleInfo) -> Path:
     cache = paths.wheel_cache_dir(info.version)
     wheelhouse = cache / "wheelhouse"
-    paths.ensure_directory(cache)
-    shutil.copytree(info.root / "wheelhouse", wheelhouse, dirs_exist_ok=True)
-    shutil.copy2(info.wheel.path, cache / info.wheel.path.name)
+    try:
+        paths.ensure_directory(cache)
+        shutil.copytree(info.root / "wheelhouse", wheelhouse, dirs_exist_ok=True)
+        shutil.copy2(info.wheel.path, cache / info.wheel.path.name)
+    except OSError as error:
+        raise DeployError(
+            "unwritable_path",
+            f"cannot cache the wheelhouse for {info.version} at {cache}: {error}",
+            "Free space or fix the permissions on the state directory, then retry.",
+            exit_code=3,
+            path=str(cache),
+        ) from error
     return cache
+
+
+def _rollback_previous(
+    report: Report,
+    previous: DeploymentRecord,
+    *,
+    uv_path: Path,
+    python_path: Path,
+    tool_dir: Path,
+    bin_dir: Path,
+) -> None:
+    """Restore the previous version and record the rollback outcome."""
+
+    try:
+        _rollback(
+            previous,
+            uv_path=uv_path,
+            python_path=python_path,
+            tool_dir=tool_dir,
+            bin_dir=bin_dir,
+        )
+    except DeployError:
+        report.actions.append(
+            Action(
+                action="rollback",
+                target=previous.version,
+                outcome=ActionOutcome.FAILED,
+                detail="could not restore the previous version",
+            )
+        )
+        raise
+    report.actions.append(
+        Action(
+            action="rollback",
+            target=previous.version,
+            outcome=ActionOutcome.OK,
+            detail="restored the previous version from the cache",
+        )
+    )
+    report.status = ReportStatus.ERROR
+
+
+def _discard_fresh_install(
+    report: Report,
+    *,
+    uv_path: Path,
+    tool_dir: Path,
+    bin_dir: Path,
+    version: str,
+) -> bool:
+    """Remove a failed first installation and record the outcome.
+
+    Without a previous version there is nothing to restore. Leaving the
+    promoted tool environment and command links behind would make the next
+    plain install refuse as unmanaged, so remove them before reporting the
+    failure.
+    """
+
+    try:
+        uv_module.tool_uninstall(uv_path, tool_dir=tool_dir, bin_dir=bin_dir)
+    except DeployError:
+        report.actions.append(
+            Action(
+                action="uv_uninstall",
+                target=version,
+                outcome=ActionOutcome.FAILED,
+                detail="could not remove the failed first installation",
+            )
+        )
+        return False
+    report.actions.append(
+        Action(
+            action="uv_uninstall",
+            target=version,
+            outcome=ActionOutcome.OK,
+            detail="removed the failed first installation",
+        )
+    )
+    return True
 
 
 def _rollback(
@@ -521,6 +609,18 @@ def _install(opts: InstallOptions, report: Report) -> Report:
                 detail="manifest and checksums verified",
             )
         )
+        # Cache before promotion: this is the last fallible write that needs the
+        # bundle, and a failure here must not leave a promoted tool environment
+        # without a rollback cache.
+        cache = _cache_wheelhouse(info)
+        report.actions.append(
+            Action(
+                action="cache",
+                target=str(cache),
+                outcome=ActionOutcome.OK,
+                detail="cached the wheelhouse for rollback",
+            )
+        )
         uv_path, python_path = _prepare_toolchain(
             info,
             uv_override=opts.uv_override,
@@ -608,37 +708,38 @@ def _install(opts: InstallOptions, report: Report) -> Report:
                     )
                 )
                 if record_before is not None:
-                    try:
-                        _rollback(
-                            record_before,
-                            uv_path=uv_path,
-                            python_path=python_path,
-                            tool_dir=active_tool,
-                            bin_dir=bin_dir,
-                        )
-                    except DeployError:
-                        report.actions.append(
-                            Action(
-                                action="rollback",
-                                target=record_before.version,
-                                outcome=ActionOutcome.FAILED,
-                                detail="could not restore the previous version",
-                            )
-                        )
-                        raise
-                    report.actions.append(
-                        Action(
-                            action="rollback",
-                            target=record_before.version,
-                            outcome=ActionOutcome.OK,
-                            detail="restored the previous version from the cache",
-                        )
+                    _rollback_previous(
+                        report,
+                        record_before,
+                        uv_path=uv_path,
+                        python_path=python_path,
+                        tool_dir=active_tool,
+                        bin_dir=bin_dir,
                     )
-                    report.status = ReportStatus.ERROR
+                else:
+                    removed = _discard_fresh_install(
+                        report,
+                        uv_path=uv_path,
+                        tool_dir=active_tool,
+                        bin_dir=bin_dir,
+                        version=info.version,
+                    )
+                remedy = (
+                    "The previous version was restored; inspect the failing command."
+                    if record_before is not None
+                    else (
+                        "The failed installation was removed; inspect the failing "
+                        "command before retrying."
+                        if removed
+                        else "The failed installation could not be fully removed; "
+                        "inspect the failing command and remove its command links "
+                        "and tool directory manually before retrying."
+                    )
+                )
                 raise DeployError(
                     "self_check_failed",
                     "active commands failed their self-check",
-                    "The previous version was restored; inspect the failing command.",
+                    remedy,
                 )
             report.actions.append(
                 Action(
@@ -650,15 +751,6 @@ def _install(opts: InstallOptions, report: Report) -> Report:
             )
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        cache = _cache_wheelhouse(info)
-        report.actions.append(
-            Action(
-                action="cache",
-                target=str(cache),
-                outcome=ActionOutcome.OK,
-                detail="cached the wheelhouse for rollback",
-            )
-        )
         record = DeploymentRecord(
             version=info.version,
             previous_version=report.previous_version,
@@ -680,7 +772,38 @@ def _install(opts: InstallOptions, report: Report) -> Report:
             ),
             extra={"rollback_available": not adopted},
         )
-        write_record(record)
+        try:
+            write_record(record)
+        except DeployError as record_failure:
+            report.actions.append(
+                Action(
+                    action="write_record",
+                    target=str(paths.record_path()),
+                    outcome=ActionOutcome.FAILED,
+                    detail=record_failure.message,
+                )
+            )
+            # The commands are already promoted. Restore the previous version,
+            # or remove the first installation, so the record and the tree agree
+            # and the next plain install can repair instead of refusing.
+            if record_before is not None:
+                _rollback_previous(
+                    report,
+                    record_before,
+                    uv_path=uv_path,
+                    python_path=python_path,
+                    tool_dir=active_tool,
+                    bin_dir=bin_dir,
+                )
+            else:
+                _discard_fresh_install(
+                    report,
+                    uv_path=uv_path,
+                    tool_dir=active_tool,
+                    bin_dir=bin_dir,
+                    version=info.version,
+                )
+            raise
         report.actions.append(
             Action(
                 action="write_record",

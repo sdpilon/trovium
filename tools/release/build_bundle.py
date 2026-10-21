@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import platform as platform_module
@@ -284,13 +285,43 @@ def manifest_for(
     }
 
 
+def _normalize_tarinfo(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Strip timestamps and ownership so the archive depends only on content."""
+
+    info.mtime = 0
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    return info
+
+
+def write_tarball(bundle: Path, destination: Path) -> None:
+    """Write a reproducible tarball with a zeroed gzip header."""
+
+    with (
+        destination.open("wb") as raw,
+        gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as tar,
+    ):
+        tar.add(bundle, arcname=bundle.name, filter=_normalize_tarinfo)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", default="0.1.0")
     parser.add_argument("--out", type=Path, default=ROOT / "dist")
     parser.add_argument("--platform", default=None)
-    parser.add_argument("--local", action="store_true")
-    parser.add_argument("--fast", action="store_true")
+    parser.add_argument(
+        "--local",
+        "--fast",
+        dest="local",
+        action="store_true",
+        help=(
+            "use the host uv/Python and the cached wheelhouse (default; "
+            "--fast is an alias used by the test harness)"
+        ),
+    )
     parser.add_argument("--uv", type=Path, default=None)
     parser.add_argument("--python", type=Path, default=None)
     parser.add_argument(
@@ -299,8 +330,8 @@ def main() -> int:
         help="download and verify the pinned uv/CPython artifacts from the lock",
     )
     args = parser.parse_args()
-    if not args.local and not args.fast:
-        args.local = True
+    if args.locked and args.local:
+        parser.error("--locked and --local/--fast are mutually exclusive")
     platform_name = args.platform or normalized_platform()
     lock: dict[str, Any] | None = None
     if args.locked:
@@ -337,8 +368,7 @@ def main() -> int:
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
         )
         tarball = args.out / f"{bundle.name}.tar.gz"
-        with tarfile.open(tarball, "w:gz") as tar:
-            tar.add(bundle, arcname=bundle.name)
+        write_tarball(bundle, tarball)
         digest = sha256_file(tarball)
         (Path(str(tarball) + ".sha256")).write_text(
             f"{digest}  {tarball.name}\n", encoding="utf-8"
