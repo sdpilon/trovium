@@ -56,9 +56,12 @@ bash .opencode/skills/background-and-follow/scripts/follow-log.sh \
   '(==> gate (passed|failed)|<== .* failed)'
 ```
 
-For an arbitrary output file, pass that path and its completion pattern. For
-CI, `gh run watch <id> --interval 20 --exit-status` already exits when the run
-completes.
+For an arbitrary output file, pass that path and a completion pattern the
+command actually prints. Do not wrap a command that already reports its own
+completion: `gh run watch <id> --interval 20 --exit-status` exits when the run
+finishes, and `gh pr checks --watch` prints only a check table with no summary
+line, so run it directly and read its exit code instead of following it with
+`follow-log.sh`.
 
 ## Why not `tail -f | awk`
 
