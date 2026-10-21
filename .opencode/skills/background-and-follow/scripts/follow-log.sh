@@ -3,8 +3,9 @@
 #
 # Usage: follow-log.sh LOG [REGEX]
 #
-# Prints phase transitions (==> / <==) and lines containing FAILED or ERROR.
-# Exits 0 on the success REGEX, 1 on a failed phase, and 2 on usage errors.
+# Prints the completion line, phase transitions (==> / <==), and lines
+# containing FAILED or ERROR. Exits 0 on the success REGEX, 1 on a failed
+# phase, and 2 on usage errors.
 # Unlike `tail -f | awk '... exit'`, this script terminates its own reader
 # through a FIFO, so the caller does not hang after the gate finishes.
 set -euo pipefail
@@ -38,16 +39,20 @@ trap 'exit 143' TERM
 
 while IFS= read -r line; do
     case "$line" in
+        *"<== "*" failed"* | *"==> gate failed"*)
+            printf '%s\n' "$line"
+            exit 1
+            ;;
+    esac
+    if [[ "$line" =~ $pattern ]]; then
+        printf '%s\n' "$line"
+        exit 0
+    fi
+    case "$line" in
         *"==>"* | *"<=="* | *FAILED* | *ERROR*)
             printf '%s\n' "$line"
             ;;
     esac
-    case "$line" in
-        *"<== "*" failed"* | *"==> gate failed"*) exit 1 ;;
-    esac
-    if [[ "$line" =~ $pattern ]]; then
-        exit 0
-    fi
 done <"$fifo"
 
 exit 1
