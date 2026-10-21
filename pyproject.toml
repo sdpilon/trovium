@@ -34,6 +34,7 @@ Repository = "https://github.com/sdpilon/trovium"
 dev = [
   "mypy>=1.15",
   "pytest>=8.4",
+  "pytest-xdist>=3.8.0",
   "ruff>=0.14",
 ]
 
@@ -42,7 +43,7 @@ packages = ["src/trovium"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = ["-ra", "--strict-markers", "--strict-config"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "-n", "auto", "--durations=15"]
 testpaths = ["tests"]
 pythonpath = ["."]
 

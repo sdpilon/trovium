@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import platform
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -96,35 +99,49 @@ def extract_bundle(bundle: Path, destination: Path) -> Path:
     return roots[0]
 
 
+@contextmanager
+def _bundle_lock(directory: Path) -> Iterator[None]:
+    """Serialize bundle builds across concurrent test processes."""
+
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".lock").open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def build_bundle(version: str) -> Path:
 
     directory = CACHE / version / PLATFORM
     bundle = directory / f"trovium-{version}-{PLATFORM}.tar.gz"
-    if bundle.is_file() and Path(f"{bundle}.sha256").is_file():
-        return bundle
-    build = directory / "build"
-    shutil.rmtree(build, ignore_errors=True)
-    build.mkdir(parents=True)
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "tools/release/build_bundle.py",
-            "--fast",
-            "--version",
-            version,
-            "--out",
-            str(build),
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "UV_CACHE_DIR": str(CACHE / "uv-cache")},
-    )
-    shutil.copy2(build / bundle.name, bundle)
-    shutil.copy2(Path(f"{build / bundle.name}.sha256"), Path(f"{bundle}.sha256"))
-    shutil.rmtree(build, ignore_errors=True)
+    with _bundle_lock(directory):
+        if bundle.is_file() and Path(f"{bundle}.sha256").is_file():
+            return bundle
+        build = directory / "build"
+        shutil.rmtree(build, ignore_errors=True)
+        build.mkdir(parents=True)
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "tools/release/build_bundle.py",
+                "--fast",
+                "--version",
+                version,
+                "--out",
+                str(build),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            env={**os.environ, "UV_CACHE_DIR": str(CACHE / "uv-cache")},
+        )
+        shutil.copy2(build / bundle.name, bundle)
+        shutil.copy2(Path(f"{build / bundle.name}.sha256"), Path(f"{bundle}.sha256"))
+        shutil.rmtree(build, ignore_errors=True)
     return bundle
 
 
@@ -134,23 +151,23 @@ def build_broken_bundle(version: str = "0.2.1") -> Path:
     good = build_bundle(version)
     directory = CACHE / "broken" / version / PLATFORM
     broken = directory / "broken-bundle.tar.gz"
-    if broken.is_file() and Path(f"{broken}.sha256").is_file():
-        return broken
-    directory.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "tests/fixtures/deploy/make_broken_bundle.py",
-            str(good),
-            str(broken),
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "UV_CACHE_DIR": str(CACHE / "uv-cache")},
-    )
+    with _bundle_lock(directory):
+        if broken.is_file() and Path(f"{broken}.sha256").is_file():
+            return broken
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "tests/fixtures/deploy/make_broken_bundle.py",
+                str(good),
+                str(broken),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            env={**os.environ, "UV_CACHE_DIR": str(CACHE / "uv-cache")},
+        )
     return broken
 
 
