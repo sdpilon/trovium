@@ -178,7 +178,7 @@ resolve_bundle() {
         return
     fi
     if [ -z "$VERSION" ]; then
-        if ! VERSION="$(download_text "$RELEASE_BASE/releases/latest/download/VERSION" | tr -d '[:space:]')"; then
+        if ! VERSION="$(download_text "$RELEASE_BASE/latest/download/VERSION" | tr -d '[:space:]')"; then
             die "bundle_download" "could not resolve the latest trovium version" \
                 "Pass --version explicitly or retry when the release is available." 4
         fi
@@ -223,10 +223,17 @@ trap on_unexpected_failure ERR
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --version) VERSION="${2:-}"; shift 2 ;;
-        --bundle) BUNDLE="${2:-}"; shift 2 ;;
-        --sha256) EXPECTED_SHA="${2:-}"; shift 2 ;;
-        --release-base-url) RELEASE_BASE="${2:-}"; shift 2 ;;
+        --version|--bundle|--sha256|--release-base-url)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                die "misuse" "option $1 needs a value" "Check install.sh --help." 2
+            fi
+            case "$1" in
+                --version) VERSION="$2" ;;
+                --bundle) BUNDLE="$2" ;;
+                --sha256) EXPECTED_SHA="$2" ;;
+                --release-base-url) RELEASE_BASE="$2" ;;
+            esac
+            shift 2 ;;
         --status) MODE="status"; shift ;;
         --uninstall) MODE="uninstall"; shift ;;
         --purge) PURGE="1"; shift ;;
@@ -305,7 +312,7 @@ platform="$system-$arch"
 
 if [ "$MODE" = "install" ] && [ -z "$BUNDLE" ] && [ "$CONFIG_ARGS" = "0" ]; then
     if [ -z "$VERSION" ]; then
-        VERSION="$(download_text "$RELEASE_BASE/releases/latest/download/VERSION" | tr -d '[:space:]' || true)"
+        VERSION="$(download_text "$RELEASE_BASE/latest/download/VERSION" | tr -d '[:space:]' || true)"
     fi
     if [ -n "$VERSION" ]; then
         check_current_install "$VERSION"

@@ -86,6 +86,20 @@ def test_second_identical_install_is_a_noop(layout: Layout, bundle: Path) -> Non
     assert layout.config.read_bytes() == config_before
 
 
+def test_noop_surfaces_config_warnings(layout: Layout, bundle: Path) -> None:
+    report(install(layout, bundle, _standard(layout)))
+    shutil.rmtree(layout.source)
+
+    repeated = report(install(layout, bundle, _standard(layout)))
+
+    assert repeated["status"] == "degraded"
+    assert repeated["actions"] == []
+    source_check = next(
+        check for check in repeated["checks"] if check["name"] == "source_path"
+    )
+    assert source_check["status"] == "warn"
+
+
 def test_missing_command_triggers_repair_not_noop(layout: Layout, bundle: Path) -> None:
     report(install(layout, bundle, _standard(layout)))
     (layout.bin / "trovium-ingest").unlink()

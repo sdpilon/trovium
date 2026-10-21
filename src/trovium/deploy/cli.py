@@ -152,11 +152,54 @@ def _dispatch(args: argparse.Namespace) -> Report | None:
     return uninstall(purge=bool(args.purge), config_override=args.config)
 
 
+def _requested_json_style(argv: Sequence[str]) -> JsonStyle:
+    """Read ``--json`` before parsing so a parse error can still honour it."""
+
+    values = list(argv)
+    for index, item in enumerate(values[:-1]):
+        if item == "--json":
+            try:
+                return _json_style(values[index + 1])
+            except ValueError:
+                return JsonStyle.PRETTY
+    return JsonStyle.PRETTY
+
+
+def _requested_operation(argv: Sequence[str]) -> Operation:
+    """Name the attempted operation when argparse cannot (missing/bad options)."""
+
+    commands = {
+        Operation.INSTALL.value,
+        Operation.STATUS.value,
+        Operation.UNINSTALL.value,
+    }
+    for item in argv:
+        if item in commands:
+            return _operation(item)
+    return Operation.INSTALL
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point: dispatch, emit one report, and map the exit code."""
 
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    try:
+        args = parser.parse_args(raw)
+    except SystemExit as exit_error:
+        code = exit_error.code if isinstance(exit_error.code, int) else EXIT_MISUSE
+        if code == 0:  # --help and --version exit successfully
+            return 0
+        failure = DeployError(
+            "misuse",
+            "invalid command line arguments",
+            "Run trovium-deploy --help and retry.",
+            exit_code=EXIT_MISUSE,
+        )
+        misuse_report = failure_report(_requested_operation(raw), failure)
+        emit(misuse_report, _requested_json_style(raw))
+        human_summary(misuse_report)
+        return code
     operation = _operation(args.command)
     try:
         report = _dispatch(args)

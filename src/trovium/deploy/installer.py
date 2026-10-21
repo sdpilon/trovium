@@ -147,7 +147,9 @@ def _config_checks(config: TroviumConfig) -> list[Check]:
     if config.source.mode == "client":
         username = os.environ.get(config.source.client_username_env)
         password = os.environ.get(config.source.client_password_env)
-        register_secrets((username, password))
+        # Only the password is a secret: registering the username redacts any
+        # path that happens to contain it (e.g. an "admin" account).
+        register_secrets((password,))
         missing = [
             name
             for name, value in (
@@ -459,6 +461,12 @@ def _install(opts: InstallOptions, report: Report) -> Report:
             report.next_steps.append(
                 "Run trovium-deploy status for the full installation view."
             )
+            # A no-op still reports the checks it made: a failing media mount or
+            # missing source must not be hidden behind "noop" (report-schema:
+            # a fail check is error, warnings are degraded).
+            checked = _report_status(report.checks)
+            if checked is not ReportStatus.OK:
+                report.status = checked
             return report.finish()
         if not opts.force and record_before is None:
             existing = [
@@ -884,7 +892,16 @@ def _uninstall(*, purge: bool, config_override: Path | None, report: Report) -> 
         if record is None:
             target = config_path(config_override)
             if purge and target.exists():
-                target.unlink()
+                try:
+                    target.unlink()
+                except OSError as error:
+                    raise DeployError(
+                        "unwritable_path",
+                        f"config is not removable: {target}",
+                        "Fix the path permissions or remove the file, then retry.",
+                        exit_code=3,
+                        path=str(target),
+                    ) from error
                 report.actions.append(
                     Action(
                         action="purge_config",

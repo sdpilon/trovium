@@ -69,10 +69,10 @@ the versioned asset path.
 ```sh
 mkdir -p "$tmp/case1b/home" "$tmp/case1b/library" "$tmp/case1b/bin" \
   "$tmp/case1b/config" "$tmp/release/download/v0.1.0" \
-  "$tmp/release/releases/latest/download"
+  "$tmp/release/latest/download"
 cp "$bundle" "$tmp/release/download/v0.1.0/$(basename "$bundle")"
 cp "$bundle.sha256" "$tmp/release/download/v0.1.0/$(basename "$bundle").sha256"
-printf '0.1.0\n' > "$tmp/release/releases/latest/download/VERSION"
+printf '0.1.0\n' > "$tmp/release/latest/download/VERSION"
 python3 -m http.server 8765 --directory "$tmp/release" >/dev/null 2>&1 &
 http_pid=$!
 trap 'kill "$http_pid" 2>/dev/null || true' EXIT
@@ -106,8 +106,8 @@ kill "$http_pid"
 **Expected**: both installs exit 0; `.status` is `ok` or `degraded`;
 `.version` is `0.1.0`; the installed command runs. The pinned run uses
 `--version 0.1.0`; the second run omits `--version` and exercises
-`releases/latest/download/VERSION`. The production equivalent is the
-`releases/latest/download` URL; this fixture exercises the same bootstrap
+`latest/download/VERSION` under the release base. The production
+equivalent is the `releases/latest/download` URL; this fixture exercises the same bootstrap
 download, checksum, extraction, and install path. Record the clean-runner
 timing separately against the 5-minute SC-001 target.
 

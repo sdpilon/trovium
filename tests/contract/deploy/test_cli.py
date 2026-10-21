@@ -36,3 +36,17 @@ def test_install_missing_bundle_emits_error_report(
     payload = json.loads(captured.out)
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "bundle_invalid"
+
+
+def test_argument_error_still_emits_one_report(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = main(["uninstall", "--purge", "--jsn", "compact"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    payload = json.loads(captured.out)
+    assert payload["operation"] == "uninstall"
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "misuse"
+    assert "invalid command line arguments" in payload["error"]["message"]

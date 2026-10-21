@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.deploy_support import Layout, install, report, run
 
 REPORT_KEYS = {
@@ -85,6 +87,20 @@ def test_purge_requires_uninstall(layout: Layout) -> None:
     payload = report(completed)
     assert completed.returncode == 2
     assert payload["error"]["code"] == "misuse"
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["--version", "--bundle", "--sha256", "--release-base-url"],
+)
+def test_option_without_a_value_is_misuse(layout: Layout, option: str) -> None:
+    completed = run(layout, ["bash", "install.sh", option])
+
+    payload = report(completed)
+    assert completed.returncode == 2
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "misuse"
+    assert option in payload["error"]["message"]
 
 
 def test_early_prerequisite_failure_emits_the_full_schema(

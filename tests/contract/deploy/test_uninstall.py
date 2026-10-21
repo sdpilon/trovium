@@ -99,6 +99,19 @@ def test_purge_without_a_record_removes_only_the_config(
     assert not layout.config.exists()
 
 
+def test_purge_reports_an_unremovable_config(layout: Layout, bundle: Path) -> None:
+    layout.config.parent.mkdir(parents=True)
+    layout.config.mkdir()  # a directory where the config file belongs
+
+    completed = _bootstrap_uninstall(layout, bundle, "--purge")
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 3
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "unwritable_path"
+    assert layout.config.is_dir()
+
+
 def test_uninstall_without_a_record_and_without_purge_is_a_noop(
     layout: Layout, bundle: Path
 ) -> None:

@@ -24,7 +24,7 @@ def release_server(
     """Serve ``VERSION`` and the versioned asset; yield (base_url, release_root)."""
 
     root = Path(tempfile.mkdtemp(prefix="trovium-release-"))
-    latest = root / "releases" / "latest" / "download"
+    latest = root / "latest" / "download"
     latest.mkdir(parents=True)
     (latest / "VERSION").write_text(f"{version}\n", encoding="utf-8")
     versioned = root / "download" / f"v{version}"

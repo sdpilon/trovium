@@ -64,6 +64,28 @@ def test_install_report_lists_ordered_actions(layout: Layout, bundle: Path) -> N
     assert credential not in record
 
 
+def test_client_username_is_not_treated_as_a_secret(
+    layout: Layout, bundle: Path
+) -> None:
+    username = layout.root.name  # pytest names the directory after this test
+    completed = install(
+        layout,
+        bundle,
+        _standard(layout),
+        env={
+            "TROVIUM_CLIENT_USERNAME": username,
+            "TROVIUM_CLIENT_PASSWORD": "contract-run-report-password",
+        },
+    )
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert username in str(payload["config_path"])
+    assert payload["config_path"] == str(layout.config)
+    assert payload["install_root"] is not None
+    assert username in payload["install_root"]
+
+
 def test_status_report_has_no_actions(layout: Layout, bundle: Path) -> None:
     report(install(layout, bundle, _standard(layout)))
 
