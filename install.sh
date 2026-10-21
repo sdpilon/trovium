@@ -331,7 +331,17 @@ if [ -z "$python_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
     python_path="$(find "$BUNDLE_DIR/toolchain" -maxdepth 1 -type f -name 'python-*.tar.gz' | head -n 1)"
 fi
 if [ -z "$python_path" ]; then
-    python_path="$(command -v python3.13 || command -v python3 || true)"
+    python_path="$(command -v python3.13 || true)"
+fi
+if [ -z "$python_path" ]; then
+    # A --local/--fast bundle carries no toolchain (T101). Prefer a uv-managed
+    # CPython over an older system python3: Ubuntu 24.04 ships 3.12, which
+    # cannot run the wheel. Without one, the version check below names the cause.
+    python_path="$("$uv_path" python find --no-project --managed-python \
+        --resolve-links 3.13 2>/dev/null || true)"
+fi
+if [ -z "$python_path" ]; then
+    python_path="$(command -v python3 || true)"
 fi
 if [ -z "$python_path" ]; then
     die "missing_prerequisite" "no Python toolchain is available" \
@@ -347,6 +357,18 @@ if [ ! -x "$python_path" ]; then
     die "missing_prerequisite" "Python interpreter is not executable: $python_path" \
         "Check the bundle toolchain or install Python 3.13." 3
 fi
+# The wheel requires Python >=3.13. Refuse an older fallback interpreter here,
+# with a cause the operator can act on, instead of letting `uv run` fail later
+# with a resolver error that looks like a damaged bundle.
+python_minor="$("$python_path" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+case "$python_minor" in
+    3.1[3-9] | 3.[2-9][0-9] | [4-9].*) ;;
+    *)
+        die "missing_prerequisite" \
+            "Python 3.13 or newer is required, but ${python_path} reports ${python_minor:-no version}" \
+            "Download a complete release bundle or install Python 3.13, then retry." 3
+        ;;
+esac
 
 wheel="$(find "$BUNDLE_DIR/wheelhouse" -maxdepth 1 -type f -name 'trovium-*.whl' | head -n 1)"
 if [ -z "$wheel" ]; then

@@ -97,6 +97,37 @@ def test_missing_command_triggers_repair_not_noop(layout: Layout, bundle: Path) 
     assert (layout.bin / "trovium-ingest").is_file()
 
 
+def test_install_refuses_a_pre_313_interpreter(
+    layout: Layout, bundle: Path, tmp_path: Path
+) -> None:
+    older = tmp_path / "python-old"
+    older.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-c" ]; then\n'
+        "    printf '3.12\\n'\n"
+        "    exit 0\n"
+        "fi\n"
+        'exec python3 "$@"\n',
+        encoding="utf-8",
+    )
+    older.chmod(0o755)
+
+    completed = install(
+        layout,
+        bundle,
+        _standard(layout),
+        env={"TROVIUM_TEST_PYTHON": str(older)},
+    )
+
+    payload = report(completed)
+    assert completed.returncode == 3
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "missing_prerequisite"
+    assert "3.13 or newer" in payload["error"]["message"]
+    assert not layout.config.exists()
+    assert not (layout.bin / "trovium-ingest").exists()
+
+
 def _shim_path(
     tmp_path: Path,
     *,

@@ -55,6 +55,15 @@ accept_init() {
         "$ACCEPT_CONFIG_DIR" \
         "$ACCEPT_BIN"
     printf 'episode' > "$ACCEPT_SOURCE/Show.S01/Show.S01E01.mkv"
+    # A --local/--fast bundle carries no toolchain, so install.sh resolves the
+    # host interpreter through uv. Redirect HOME below (for XDG isolation), so
+    # keep uv's managed Python directory reachable first.
+    if [ -z "${UV_PYTHON_INSTALL_DIR:-}" ]; then
+        UV_PYTHON_INSTALL_DIR="$(uv python dir 2>/dev/null || true)"
+        if [ -n "$UV_PYTHON_INSTALL_DIR" ]; then
+            export UV_PYTHON_INSTALL_DIR
+        fi
+    fi
     export HOME="$ACCEPT_HOME"
     export TROVIUM_BIN_DIR="$ACCEPT_BIN"
     export TROVIUM_CONFIG_FILE="$ACCEPT_CONFIG_DIR/config.ini"
