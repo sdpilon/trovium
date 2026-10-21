@@ -157,6 +157,42 @@ def test_unsafe_python_tarball_is_refused(tmp_path: Path) -> None:
     assert error.value.code == "bundle_invalid"
 
 
+def test_unlisted_file_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    (root / "wheelhouse" / "extra-unlisted.whl").write_bytes(b"extra")
+
+    with pytest.raises(DeployError) as error:
+        _load(root, tmp_path)
+
+    assert error.value.code == "bundle_invalid"
+    assert "unlisted" in error.value.message
+
+
+def test_duplicate_toolchain_artifact_is_refused(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    toolchain = root / "toolchain"
+    toolchain.mkdir()
+    files = {}
+    for name in ("uv-0.1.0", "uv-0.2.0"):
+        target = toolchain / name
+        target.write_bytes(b"uv")
+        files[f"toolchain/{name}"] = _hash(target)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["files"].update(files)
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(DeployError) as error:
+        load_bundle(
+            root,
+            platform=Platform(os="linux", arch="x86_64"),
+            uv_override=None,
+            python_override=tmp_path / "python",
+        )
+
+    assert error.value.code == "bundle_invalid"
+    assert "exactly one" in error.value.message
+
+
 def _load(root: Path, tmp_path: Path) -> BundleInfo:
     return load_bundle(
         root,

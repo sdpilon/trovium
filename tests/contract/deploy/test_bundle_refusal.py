@@ -46,6 +46,24 @@ def _traversal(root: Path, manifest: dict[str, Any]) -> None:
     manifest["files"] = files
 
 
+def _unlisted_file(root: Path, manifest: dict[str, Any]) -> None:
+    (root / "wheelhouse" / "extra-unlisted.whl").write_bytes(b"extra")
+
+
+def _duplicate_toolchain(root: Path, manifest: dict[str, Any]) -> None:
+    toolchain = root / "toolchain"
+    toolchain.mkdir()
+    for name in ("uv-0.1.0", "uv-0.2.0"):
+        target = toolchain / name
+        target.write_bytes(b"uv")
+        target.chmod(0o755)
+
+
+def _duplicate_wheel(root: Path, manifest: dict[str, Any]) -> None:
+    wheel = next((root / "wheelhouse").glob("trovium-*.whl"))
+    (root / "wheelhouse" / "trovium-0.1.0-dup.whl").write_bytes(wheel.read_bytes())
+
+
 def _rewrite(bundle: Path, destination: Path, mutate: Mutation) -> Path:
     work = Path(tempfile.mkdtemp(prefix="trovium-tamper-"))
     with tarfile.open(bundle) as archive:
@@ -72,6 +90,19 @@ def _rewrite(bundle: Path, destination: Path, mutate: Mutation) -> Path:
         ),
         pytest.param("wrong_version", _wrong_version, "bundle_invalid", id="version"),
         pytest.param("traversal", _traversal, "bundle_invalid", id="traversal"),
+        pytest.param("unlisted", _unlisted_file, "bundle_invalid", id="unlisted_file"),
+        pytest.param(
+            "duplicate_toolchain",
+            _duplicate_toolchain,
+            "bundle_invalid",
+            id="duplicate_toolchain",
+        ),
+        pytest.param(
+            "duplicate_wheel",
+            _duplicate_wheel,
+            "bundle_invalid",
+            id="duplicate_wheel",
+        ),
     ],
 )
 def test_bundle_defects_are_refused_before_changes(

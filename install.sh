@@ -76,6 +76,23 @@ first_path() {
     return 1
 }
 
+# path_count <dir> <glob> <-f|-d>: count matches. A bundle with more than one
+# toolchain artifact or trovium wheel is malformed; refuse it by name instead
+# of silently selecting one.
+path_count() {
+    local dir="$1" pattern="$2" kind="${3:--f}" candidate count=0
+    for candidate in "$dir"/$pattern; do
+        [ -e "$candidate" ] || continue
+        if [ "$kind" = "-d" ]; then
+            [ -d "$candidate" ] || continue
+        else
+            [ -f "$candidate" ] || continue
+        fi
+        count=$((count + 1))
+    done
+    printf '%s\n' "$count"
+}
+
 # shellcheck disable=SC2317,SC2329  # invoked indirectly by trap
 on_unexpected_failure() {
     local status=$?
@@ -344,6 +361,10 @@ extract_bundle
 uv_path="${TROVIUM_TEST_UV:-}"
 python_path="${TROVIUM_TEST_PYTHON:-}"
 if [ -z "$uv_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
+    if [ "$(path_count "$BUNDLE_DIR/toolchain" 'uv-*' -f)" -gt 1 ]; then
+        die "bundle_invalid" "bundle contains multiple uv toolchain files" \
+            "Download the release bundle again; the toolchain is duplicated." 4
+    fi
     uv_path="$(first_path "$BUNDLE_DIR/toolchain" 'uv-*' -f || true)"
 fi
 if [ -z "$uv_path" ]; then
@@ -354,6 +375,10 @@ if [ -z "$uv_path" ]; then
         "Download a complete release bundle or install uv." 3
 fi
 if [ -z "$python_path" ] && [ -d "$BUNDLE_DIR/toolchain" ]; then
+    if [ "$(path_count "$BUNDLE_DIR/toolchain" 'python-*.tar.gz' -f)" -gt 1 ]; then
+        die "bundle_invalid" "bundle contains multiple Python toolchain files" \
+            "Download the release bundle again; the toolchain is duplicated." 4
+    fi
     python_path="$(first_path "$BUNDLE_DIR/toolchain" 'python-*.tar.gz' -f || true)"
 fi
 if [ -z "$python_path" ]; then
@@ -396,6 +421,10 @@ case "$python_minor" in
         ;;
 esac
 
+if [ "$(path_count "$BUNDLE_DIR/wheelhouse" 'trovium-*.whl' -f)" -gt 1 ]; then
+    die "bundle_invalid" "bundle contains multiple trovium wheels" \
+        "Download the release bundle again; the wheelhouse is duplicated." 4
+fi
 wheel="$(first_path "$BUNDLE_DIR/wheelhouse" 'trovium-*.whl' -f || true)"
 if [ -z "$wheel" ]; then
     die "bundle_invalid" "bundle contains no trovium wheel" \

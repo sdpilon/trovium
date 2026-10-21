@@ -24,6 +24,40 @@ REPORT_KEYS = {
     "finished_at",
 }
 
+# Keep these in sync with contracts/report-schema.md. A new emitted name is a
+# contract change, not an implementation detail.
+DOCUMENTED_ACTIONS = {
+    "verify_bundle",
+    "cache",
+    "preflight",
+    "stage",
+    "self_check",
+    "promote",
+    "rollback",
+    "write_config",
+    "write_record",
+    "uv_install",
+    "uv_uninstall",
+    "remove_command",
+    "remove_state",
+    "purge_config",
+}
+
+DOCUMENTED_CHECKS = {
+    "platform",
+    "bundle",
+    "config",
+    "library_path",
+    "source_path",
+    "source_configured",
+    "credentials",
+    "installed_commands",
+    "command_path",
+    "record",
+    "rollback",
+    "self_check",
+}
+
 
 def _standard(layout: Layout) -> list[str]:
     return [
@@ -47,10 +81,12 @@ def test_install_report_lists_ordered_actions(layout: Layout, bundle: Path) -> N
     assert completed.returncode == 0, payload
     assert set(payload) == REPORT_KEYS
     names = [action["action"] for action in payload["actions"]]
-    order = ["verify_bundle", "stage", "self_check", "promote"]
+    order = ["verify_bundle", "cache", "stage", "self_check", "promote"]
     positions = [names.index(name) for name in order]
     assert positions == sorted(positions)
     assert names.index("write_record") > positions[-1]
+    assert set(names) <= DOCUMENTED_ACTIONS
+    assert {check["name"] for check in payload["checks"]} <= DOCUMENTED_CHECKS
     assert all(action["outcome"] == "ok" for action in payload["actions"])
     assert payload["version"] == "0.1.0"
     assert payload["config_path"] == str(layout.config)
@@ -96,4 +132,21 @@ def test_status_report_has_no_actions(layout: Layout, bundle: Path) -> None:
     assert payload["operation"] == "status"
     assert payload["actions"] == []
     assert set(payload) == REPORT_KEYS
+    assert {check["name"] for check in payload["checks"]} <= DOCUMENTED_CHECKS
     assert any(check["name"] == "self_check" for check in payload["checks"])
+
+
+def test_forced_adoption_uses_the_documented_rollback_check(
+    layout: Layout, bundle: Path
+) -> None:
+    layout.bin.mkdir(parents=True)
+    (layout.bin / "trovium-ingest").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (layout.bin / "trovium-ingest").chmod(0o755)
+
+    completed = install(layout, bundle, [*_standard(layout), "--force"])
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert set(checks) <= DOCUMENTED_CHECKS
+    assert checks["rollback"]["status"] == "warn"

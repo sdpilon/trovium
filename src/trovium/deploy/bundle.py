@@ -85,6 +85,7 @@ def _safe_relative(value: str) -> PurePosixPath:
 
 
 def _verify_files(root: Path, files: dict[str, str]) -> None:
+    listed = {_safe_relative(name).as_posix() for name in files}
     for name, expected in files.items():
         relative = _safe_relative(name)
         target = root.joinpath(*relative.parts)
@@ -104,6 +105,20 @@ def _verify_files(root: Path, files: dict[str, str]) -> None:
                 "Download the bundle again and verify its .sha256 sidecar.",
                 exit_code=4,
                 path=name,
+            )
+    for candidate in root.rglob("*"):
+        if not candidate.is_file():
+            continue
+        relative_name = candidate.relative_to(root).as_posix()
+        if relative_name == "manifest.json":
+            continue
+        if relative_name not in listed:
+            raise DeployError(
+                "bundle_invalid",
+                f"bundle contains an unlisted file: {relative_name}",
+                "Download the bundle from the official release and retry.",
+                exit_code=4,
+                path=relative_name,
             )
 
 
@@ -187,8 +202,21 @@ def _wheel_info(path: Path) -> tuple[str, tuple[str, ...]]:
 
 
 def _toolchain_file(root: Path, prefix: str) -> Path | None:
-    candidates = sorted((root / "toolchain").glob(f"{prefix}*"))
-    files = [candidate for candidate in candidates if candidate.is_file()]
+    files = sorted(
+        candidate
+        for candidate in (root / "toolchain").glob(f"{prefix}*")
+        if candidate.is_file()
+    )
+    if len(files) > 1:
+        name = prefix.removesuffix("-")
+        raise DeployError(
+            "bundle_invalid",
+            f"bundle contains {len(files)} {name} toolchain artifacts; "
+            "exactly one is required",
+            "Download the bundle again; the toolchain is duplicated.",
+            exit_code=4,
+            path=str(root / "toolchain"),
+        )
     return files[0] if files else None
 
 

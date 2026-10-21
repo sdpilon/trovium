@@ -515,3 +515,9 @@ Task: "Implement bundle in src/trovium/deploy/bundle.py"
 - [x] T130 LOW: Resolve the `--local`/`--fast` ambiguity in `tools/release/build_bundle.py`: give `--fast` distinct documented behavior or treat it as an alias and remove the unused `args.fast` branch, per T022 / plan local-builder decision (partial)
 - [x] T131 LOW: Use `config_matches()` in the ignored-supplied-value path or remove it from `config.py` and its `__all__` export, so the F4 warning and the config API have one implementation, per review F4 / T011 config surface (unrequested)
 - [x] T132 LOW: After T124–T131 are complete, set `spec.md` `**Status**: Complete` and let the spec gate enforce the 11 SC accept blocks on every run; T123 remains the tracking item and must run last, per T123 / Implementation Strategy step 6 / SC-001–SC-012 (partial)
+
+## Phase 11: Convergence
+
+- [x] T133 MEDIUM: Reject unlisted and duplicate bundle files during verification: enforce that `manifest.files` lists every regular file, allow exactly one `uv-*` and `python-*` toolchain artifact, and return `bundle_invalid` instead of silently selecting one, with a regression test using duplicate toolchain/wheel entries, per contracts/bundle.md `files` rule / FR-009 / T129 (partial)
+- [x] T134 MEDIUM: Reconcile `contracts/report-schema.md` with the emitted report vocabulary: add the `cache` action and the `rollback` check (or rename them to existing stable names) and assert the chosen names in `tests/contract/deploy/test_run_report.py`, per contracts/report-schema.md / T057 / T113 (contradicts)
+- [x] T135 LOW: Add an automated end-to-end reproducibility check that builds the same version and platform twice with `tools/release/build_bundle.py` and asserts identical tarball SHA-256 digests, so wheel or archive metadata drift is caught, per T127 / Constitution XVII (partial)
