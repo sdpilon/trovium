@@ -100,6 +100,32 @@ def test_noop_surfaces_config_warnings(layout: Layout, bundle: Path) -> None:
     assert source_check["status"] == "warn"
 
 
+def test_reinstall_warns_when_supplied_paths_are_ignored(
+    layout: Layout, bundle: Path
+) -> None:
+    first = report(install(layout, bundle, _standard(layout)))
+    assert first["status"] == "ok"
+    other_library = layout.root / "other-library"
+    other_library.mkdir()
+
+    repeated = report(
+        install(
+            layout,
+            bundle,
+            ["--library-root", str(other_library), "--source", str(layout.source)],
+        )
+    )
+
+    assert repeated["status"] == "degraded"
+    config_check = next(
+        check for check in repeated["checks"] if check["name"] == "config"
+    )
+    assert config_check["status"] == "warn"
+    assert str(other_library) in config_check["detail"]
+    assert "not applied" in config_check["detail"]
+    assert f"root = {layout.library}" in layout.config.read_text(encoding="utf-8")
+
+
 def test_missing_command_triggers_repair_not_noop(layout: Layout, bundle: Path) -> None:
     report(install(layout, bundle, _standard(layout)))
     (layout.bin / "trovium-ingest").unlink()

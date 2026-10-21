@@ -195,6 +195,25 @@ def _resolve_install_config(
         ) from error
 
 
+def _ignored_supplied_warnings(
+    opts: InstallOptions, config: TroviumConfig
+) -> list[str]:
+    """Name supplied values a reinstall keeps from the existing config (FR-022)."""
+
+    warnings: list[str] = []
+    supplied = (
+        ("library root", opts.library_root, config.library_root),
+        ("source path", opts.source, config.source.path),
+        ("client URL", opts.client_url, config.source.client_url),
+    )
+    for label, requested, current in supplied:
+        if requested is not None and requested != current:
+            warnings.append(
+                f"existing config retained; supplied {label} not applied: {requested}"
+            )
+    return warnings
+
+
 def _resolve_install_config_inner(
     opts: InstallOptions,
 ) -> tuple[TroviumConfig, list[str], list[Action]]:
@@ -241,6 +260,7 @@ def _resolve_install_config_inner(
         loaded = load_config(target, required=True)
         assert loaded is not None
         warnings.extend(loaded.warnings)
+        warnings.extend(_ignored_supplied_warnings(opts, loaded.config))
         return loaded.config, warnings, actions
     if opts.source is not None and opts.client_url is not None:
         raise DeployError(
