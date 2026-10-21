@@ -22,6 +22,7 @@ npm ci                  # once: pinned prettier/markdownlint-cli2 for the gate
 scripts/check.sh        # THE canonical check: ruff lint+format, mypy strict, pytest, prettier, markdownlint, shellcheck
 uv run pytest tests/integration/test_client_ingest.py   # one test file
 uv run pytest -k "single_file"          # one test by name
+uv run pytest -n 0 tests/unit/test_library.py   # serial, for debugging (default is -n auto)
 uv run ruff check --fix . && uv run ruff format .       # lint autofix + format
 uv run mypy .           # `mypy .` is accepted and covers src/ + tests/ + tools/
 ```
