@@ -103,8 +103,46 @@ def ensure_directory(path: Path, mode: int = 0o700) -> None:
         ) from error
 
 
+def validate_writable_path(path: Path) -> None:
+    """Refuse a destination that cannot be created or written.
+
+    Nothing is created: the nearest existing ancestor must be a writable
+    directory, and the path itself must be a directory when it exists.
+    """
+
+    probe = path
+    while not probe.exists():
+        parent = probe.parent
+        if parent == probe:
+            break
+        probe = parent
+    if path.exists() and not path.is_dir():
+        raise DeployError(
+            "unwritable_path",
+            f"{path} is not a directory",
+            "Remove the file or point the matching TROVIUM_* override at a directory.",
+            exit_code=3,
+            path=str(path),
+        )
+    if not probe.is_dir():
+        raise DeployError(
+            "unwritable_path",
+            f"{probe} is not a directory",
+            "Fix the parent path and retry.",
+            exit_code=3,
+            path=str(probe),
+        )
+    if not os.access(probe, os.W_OK | os.X_OK):
+        raise DeployError(
+            "unwritable_path",
+            f"{path} is not writable",
+            "Fix the directory permissions and retry.",
+            exit_code=3,
+            path=str(path),
+        )
+
+
 def ensure_file_private(path: Path) -> None:
-    """Set an existing file to mode 0600."""
 
     try:
         path.chmod(0o600)
@@ -238,5 +276,6 @@ __all__ = [
     "state_dir",
     "tool_dir",
     "toolchain_root",
+    "validate_writable_path",
     "wheel_cache_dir",
 ]

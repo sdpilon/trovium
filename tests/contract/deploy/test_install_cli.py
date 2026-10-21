@@ -227,3 +227,23 @@ def test_missing_downloader_names_the_prerequisite(
     assert completed.returncode == 3
     assert payload["error"]["code"] == "missing_prerequisite"
     assert "curl" in payload["error"]["message"]
+
+
+def test_unwritable_command_path_fails_before_writing_anything(
+    layout: Layout, bundle: Path, tmp_path: Path
+) -> None:
+    blocked = tmp_path / "blocked-bin"
+    blocked.write_text("not a directory", encoding="utf-8")
+
+    completed = install(
+        layout,
+        bundle,
+        ["--library-root", str(layout.library), "--source", str(layout.source)],
+        env={"TROVIUM_BIN_DIR": str(blocked)},
+    )
+
+    payload = report(completed)
+    assert completed.returncode == 3
+    assert payload["error"]["code"] == "unwritable_path"
+    assert not layout.config.exists()
+    assert not (layout.state / "trovium" / "deployment.json").exists()

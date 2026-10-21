@@ -108,18 +108,24 @@ def _operation(command: str) -> Operation:
 def _failure_with_context(operation: Operation, failure: DeployError) -> Report:
     """Name the failure and keep the active installation visible in the report."""
 
-    report = failure_report(operation, failure)
+    report = failure_report(operation, failure, failure.report)
     try:
         record = read_record()
     except DeployError:
         return report
     if record is not None:
-        report.version = record.version
-        report.previous_version = record.version
-        report.config_path = record.config_path
-        report.install_root = record.tool_dir
-        report.bin_dir = record.bin_dir
-        report.commands = list(record.commands)
+        if report.version is None:
+            report.version = record.version
+        if report.previous_version is None:
+            report.previous_version = record.version
+        if report.config_path is None:
+            report.config_path = record.config_path
+        if report.install_root is None:
+            report.install_root = record.tool_dir
+        if report.bin_dir is None:
+            report.bin_dir = record.bin_dir
+        if not report.commands:
+            report.commands = list(record.commands)
     return report
 
 

@@ -20,7 +20,7 @@ from tests.deploy_support import (
 from trovium.deploy import installer
 from trovium.deploy import uv as uv_module
 from trovium.deploy.installer import InstallOptions
-from trovium.deploy.report import DeployError, now
+from trovium.deploy.report import ActionOutcome, DeployError, now
 from trovium.deploy.state import CommandCheck, SelfCheckResult
 
 
@@ -125,6 +125,10 @@ def test_active_self_check_failure_restores_the_cached_previous_version(
         _direct_install(layout, extracted)
 
     assert failure.value.code == "self_check_failed", failure.value.message
+    partial = failure.value.report
+    assert partial is not None
+    actions = {action.action: action for action in partial.actions}
+    assert actions["rollback"].outcome is ActionOutcome.OK
     assert calls["count"] == 2
     record = json.loads((layout.state / "trovium" / "deployment.json").read_text())
     assert record["version"] == "0.1.0"

@@ -59,6 +59,13 @@ Linux runner.
    `tests/integration/deploy/test_rollback.py`.
 6. A failed CLI start (for example, a wheel corrupt beyond repair) now emits
    the full JSON report with `bundle_invalid` instead of exiting silently.
+7. Failure reports now keep the actions already taken and, when an upgrade is
+   rolled back, record the `rollback` action and its outcome.
+8. Install destinations (config, state, data, bin) are validated before the
+   config or toolchain is written, so an unwritable path leaves nothing behind.
+9. Uninstall verifies its removals: a cache or toolchain it cannot delete now
+   produces a named failure and keeps the deployment record for a retry,
+   instead of reporting a partial cleanup as success.
 
 ## Linux verification (ubuntu:24.04 aarch64)
 

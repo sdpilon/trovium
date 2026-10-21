@@ -194,6 +194,7 @@ class DeployError(Exception):
         self.remedy = remedy
         self.exit_code = exit_code
         self.path = path
+        self.report: Report | None = None
 
 
 def now() -> str:
@@ -210,18 +211,23 @@ def fresh_report(operation: Operation) -> Report:
     return report
 
 
-def failure_report(operation: Operation, failure: DeployError) -> Report:
-    """Build the standard error report for a deployment failure."""
+def failure_report(
+    operation: Operation, failure: DeployError, partial: Report | None = None
+) -> Report:
+    """Build the standard error report for a deployment failure.
 
-    report = Report(
-        operation=operation,
-        status=ReportStatus.ERROR,
-        error=ErrorInfo(
-            code=failure.code,
-            message=failure.message,
-            remedy=failure.remedy,
-            path=failure.path,
-        ),
+    When the operation already produced a report, keep its actions and
+    observations so a failure still shows what happened before it stopped.
+    """
+
+    report = partial if partial is not None else Report(operation=operation)
+    report.operation = operation
+    report.status = ReportStatus.ERROR
+    report.error = ErrorInfo(
+        code=failure.code,
+        message=failure.message,
+        remedy=failure.remedy,
+        path=failure.path,
     )
     report.checks.append(
         Check(

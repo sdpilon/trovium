@@ -126,3 +126,23 @@ def test_uninstall_removes_every_cached_version(
 
     assert completed.returncode == 0
     assert not cache.exists() or not any(cache.iterdir())
+
+
+def test_uninstall_reports_incomplete_cleanup_as_a_failure(
+    layout: Layout, bundle: Path
+) -> None:
+    report(install(layout, bundle, _standard(layout)))
+    cache = layout.state / "trovium" / "cache"
+    victim = next(path for path in cache.iterdir() if path.is_dir())
+    victim.chmod(0o500)
+    try:
+        completed = deploy(layout, "uninstall", "--json", "compact")
+        payload = json.loads(completed.stdout)
+        assert completed.returncode == 3
+        assert payload["status"] == "error"
+        assert payload["error"]["code"] == "unwritable_path"
+        assert "cannot remove" in payload["error"]["message"]
+        assert (layout.state / "trovium" / "deployment.json").exists()
+        assert any(action["action"] == "uv_uninstall" for action in payload["actions"])
+    finally:
+        victim.chmod(0o700)

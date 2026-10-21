@@ -494,3 +494,12 @@ Task: "Implement bundle in src/trovium/deploy/bundle.py"
 - [x] T115 MEDIUM: Extend foundational unit coverage for bundle traversal/platform/missing-file/unsafe-tarball cases, paths no-TTY/unwritable/two-root isolation, state field validation/atomic replacement/lock contention, report status precedence and stable nulls, and release-builder version staging and sidecars, per T010/T012/T014/T016/T023 (partial)
 - [x] T116 MEDIUM: Execute `quickstart.md` Scenarios 1–11 in order, record pass/fail, the SC-002 matrix counts, and SC-001/SC-003/SC-009/SC-012 timings, and fix every red path before recording, per T041/T061/T076/T078/T084/T085 (missing)
 - [x] T117 LOW: Perform the Linux glibc/musl smoke test, or record that musl was not verified and confirm the `unsupported_platform` refusal plus the README limitation, per T087, spec Assumptions (missing)
+
+## Phase 9: Convergence
+
+- [x] T118 HIGH: Carry the actions already taken (verify, stage, self-check, promote, cache, config, record) into CLI failure reports so a failed install, upgrade, or uninstall lists each step and its outcome, per FR-023 (partial)
+- [x] T119 HIGH: Validate the install-path permissions for config, state, data, and bin before writing the config or toolchain, so an unwritable path leaves no config behind, per FR-012 / US1/AC3 (partial)
+- [x] T120 MEDIUM: Record a `rollback` action and its outcome when the previous version is restored after a failed active self-check, per report-schema.md / FR-023 (partial)
+- [x] T121 MEDIUM: Reconcile `contracts/bundle.md`'s "static musl" toolchain statement with the pinned glibc uv/CPython artifacts and the musl refusal, including the rationale, per plan pinned-toolchain decision / contracts/bundle.md (contradicts)
+- [x] T122 MEDIUM: Verify filesystem removals during uninstall instead of `ignore_errors=True`, and report a named failure or `skipped` outcome when the state cache, staging, or toolchain cannot be removed, per FR-017 / FR-023 (partial)
+- [ ] T123 LOW: After the Deploy (Linux) workflow is green on both platforms, set `spec.md` Status to Complete so `gates.yml` enforces the 11 SC accept blocks, per tasks.md Implementation Strategy step 6 (partial)

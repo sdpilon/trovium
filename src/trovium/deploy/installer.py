@@ -367,6 +367,39 @@ def _rollback(
 def install(opts: InstallOptions) -> Report:
     """Install or upgrade from a verified bundle."""
 
+    report = Report(operation=Operation.INSTALL)
+    try:
+        return _install(opts, report)
+    except DeployError as failure:
+        if failure.report is None:
+            failure.report = report
+        raise
+
+
+def _preflight_paths() -> None:
+    """Validate the install destinations before writing anything."""
+
+    for label, target in (
+        ("config directory", config_path().parent),
+        ("state directory", paths.state_dir()),
+        ("data directory", paths.data_dir()),
+        ("command directory", paths.bin_dir()),
+    ):
+        try:
+            paths.validate_writable_path(target)
+        except DeployError as failure:
+            raise DeployError(
+                "unwritable_path",
+                f"{label} is not writable: {target}",
+                "Fix the path permissions or set the matching TROVIUM_* override, "
+                "then retry. Nothing was changed.",
+                exit_code=3,
+                path=str(target),
+            ) from failure
+
+
+def _install(opts: InstallOptions, report: Report) -> Report:
+    _preflight_paths()
     if _running_from_active_tool_dir():
         raise DeployError(
             "install_failed",
@@ -375,7 +408,6 @@ def install(opts: InstallOptions) -> Report:
         )
     platform = paths.detect_platform()
     paths.ensure_supported(platform)
-    report = Report(operation=Operation.INSTALL)
     with acquire_lock():
         record_before = read_record()
         info = bundle_module.load_bundle(
@@ -531,13 +563,48 @@ def install(opts: InstallOptions) -> Report:
             )
             active_check = run_selfcheck(bin_dir, info.wheel.commands)
             if active_check.status != "pass":
+                bad_active = next(
+                    (item for item in active_check.commands if item.status != "pass"),
+                    None,
+                )
+                report.actions.append(
+                    Action(
+                        action="self_check",
+                        target=info.version,
+                        outcome=ActionOutcome.FAILED,
+                        detail=(
+                            f"{bad_active.name}: {bad_active.detail}"
+                            if bad_active is not None
+                            else "active self-check failed"
+                        ),
+                    )
+                )
                 if record_before is not None:
-                    _rollback(
-                        record_before,
-                        uv_path=uv_path,
-                        python_path=python_path,
-                        tool_dir=active_tool,
-                        bin_dir=bin_dir,
+                    try:
+                        _rollback(
+                            record_before,
+                            uv_path=uv_path,
+                            python_path=python_path,
+                            tool_dir=active_tool,
+                            bin_dir=bin_dir,
+                        )
+                    except DeployError:
+                        report.actions.append(
+                            Action(
+                                action="rollback",
+                                target=record_before.version,
+                                outcome=ActionOutcome.FAILED,
+                                detail="could not restore the previous version",
+                            )
+                        )
+                        raise
+                    report.actions.append(
+                        Action(
+                            action="rollback",
+                            target=record_before.version,
+                            outcome=ActionOutcome.OK,
+                            detail="restored the previous version from the cache",
+                        )
                     )
                     report.status = ReportStatus.ERROR
                 raise DeployError(
@@ -774,10 +841,44 @@ def status(config_override: Path | None = None) -> Report:
     return report.finish()
 
 
+def _remove_directory(path: Path, *, label: str) -> None:
+    """Remove a deployment-owned directory and refuse to call a partial removal done."""
+
+    if not path.exists():
+        return
+    try:
+        shutil.rmtree(path)
+    except OSError as error:
+        raise DeployError(
+            "unwritable_path",
+            f"cannot remove {label} {path}: {error}",
+            "Fix the ownership or permissions and rerun uninstall.",
+            exit_code=3,
+            path=str(path),
+        ) from error
+    if path.exists():
+        raise DeployError(
+            "unwritable_path",
+            f"{label} {path} still exists after removal",
+            "Inspect the directory and remove it manually, then rerun uninstall.",
+            exit_code=3,
+            path=str(path),
+        )
+
+
 def uninstall(*, purge: bool = False, config_override: Path | None = None) -> Report:
     """Remove commands and state; preserve config/media unless purging."""
 
     report = Report(operation=Operation.UNINSTALL)
+    try:
+        return _uninstall(purge=purge, config_override=config_override, report=report)
+    except DeployError as failure:
+        if failure.report is None:
+            failure.report = report
+        raise
+
+
+def _uninstall(*, purge: bool, config_override: Path | None, report: Report) -> Report:
     with acquire_lock():
         record = read_record()
         if record is None:
@@ -840,7 +941,6 @@ def uninstall(*, purge: bool = False, config_override: Path | None = None) -> Re
                             detail="removed recorded symlink",
                         )
                     )
-            shutil.rmtree(tool_dir, ignore_errors=True)
             report.actions.append(
                 Action(
                     action="uv_uninstall",
@@ -849,10 +949,21 @@ def uninstall(*, purge: bool = False, config_override: Path | None = None) -> Re
                     detail="uv unavailable; removed recorded paths instead",
                 )
             )
-        shutil.rmtree(paths.state_dir() / "cache", ignore_errors=True)
-        shutil.rmtree(paths.staging_root(), ignore_errors=True)
-        shutil.rmtree(paths.toolchain_root(), ignore_errors=True)
-        paths.record_path().unlink(missing_ok=True)
+            _remove_directory(tool_dir, label="tool environment")
+        _remove_directory(paths.state_dir() / "cache", label="state cache")
+        _remove_directory(paths.staging_root(), label="staging directory")
+        _remove_directory(paths.toolchain_root(), label="private toolchain")
+        record_path = paths.record_path()
+        try:
+            record_path.unlink(missing_ok=True)
+        except OSError as error:
+            raise DeployError(
+                "unwritable_path",
+                f"cannot remove deployment record {record_path}: {error}",
+                "Fix the file permissions and rerun uninstall.",
+                exit_code=3,
+                path=str(record_path),
+            ) from error
         report.actions.append(
             Action(
                 action="remove_state",
