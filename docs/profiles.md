@@ -78,10 +78,33 @@ works with no engine change.
 | `groups(entry)`                     | yes      | split one source entry into candidates         |
 | `classify(group)`                   | yes      | return `Classification` or `None`; never guess |
 | `destination(classification, root)` | yes      | library path beneath `root`                    |
-| `plan_names(classification, files)` | no       | identity until the rename step                 |
+| `plan_names(classification, files)` | no       | `NamePlan` per file; identity by default       |
 
 `Classification.details` is emitted as the item's `details` object. Keep the
 keys stable for a profile; downstream steps and users read them.
+
+## Naming and rename
+
+`trovium-rename` calls `plan_names` with the record's classification and the
+files currently in the destination. Return one `NamePlan` per file:
+
+```python
+@dataclass(frozen=True)
+class NamePlan:
+    source: Path
+    name: str | None  # None means "cannot rename safely"
+    reason: str | None = None
+```
+
+Return `None` with a reason for ambiguous multi-file candidates, and keep
+sidecars unchanged. The rename engine fails an item closed if two files map to
+the same target, if a target exists, or if the profile omits a plan. It is
+idempotent: a second run sees the canonical names and reports
+`already_handled`.
+
+The built-in rules are in
+`specs/004-profile-rename/contracts/profile.md`. A new profile should add
+naming tests next to its classification tests.
 
 ## Rules
 

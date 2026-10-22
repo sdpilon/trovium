@@ -64,12 +64,13 @@ class Disposition(StrEnum):
 
 
 class ActionKind(StrEnum):
-    """Kind of placement action recorded for an item."""
+    """Kind of filesystem action recorded for an item."""
 
     MOVE = "move"
     COPY = "copy"
     HARDLINK = "hardlink"
     DELETE = "delete"
+    RENAME = "rename"
 
 
 @dataclass(frozen=True)

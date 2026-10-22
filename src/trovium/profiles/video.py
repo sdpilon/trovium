@@ -15,6 +15,7 @@ from pathlib import Path
 from trovium.profiles.base import (
     CandidateGroup,
     Classification,
+    NamePlan,
     Profile,
     safe_component,
 )
@@ -195,6 +196,25 @@ def is_incidental_name(name: str) -> bool:
     return "sample" in stem or stem.startswith("rarbg")
 
 
+def _episode_marker(name: str) -> tuple[int, tuple[int, ...]] | None:
+    match = _EPISODE.search(name)
+    if match is None:
+        return None
+    season = int(match.group(1))
+    episodes = [int(match.group(2))]
+    tail = name[match.end() :]
+    for extra in _EXTRA_EPISODE.finditer(tail):
+        episodes.append(int(extra.group(1)))
+    return season, tuple(episodes)
+
+
+def _episode_tag(season: int, episodes: tuple[int, ...]) -> str:
+    tag = f"S{season:02d}E{episodes[0]:02d}"
+    for episode in episodes[1:]:
+        tag += f"-E{episode:02d}"
+    return tag
+
+
 class VideoProfile(Profile):
     """Movies and TV, with the existing `Movies/` and `TV/` layout."""
 
@@ -227,3 +247,52 @@ class VideoProfile(Profile):
                 return series / f"Season {season:02d}"
             return series
         return library_root / "Unresolved" / title
+
+    def plan_names(
+        self, classification: Classification, files: tuple[Path, ...]
+    ) -> tuple[NamePlan, ...]:
+        title = safe_component(classification.title or "Unknown")
+        members = [path for path in files if self.is_member(path)]
+        plans: dict[Path, NamePlan] = {
+            path: NamePlan(path, path.name)
+            for path in files
+            if not self.is_member(path)
+        }
+
+        if not classification.title:
+            for path in members:
+                plans[path] = NamePlan(path, None, "no title in the classification")
+            return tuple(plans[path] for path in files)
+
+        if classification.kind == Kind.MOVIE.value:
+            if len(members) != 1:
+                for path in members:
+                    plans[path] = NamePlan(
+                        path, None, "multi-file movie cannot be renamed safely"
+                    )
+                return tuple(plans[path] for path in files)
+            year = classification.details.get("year")
+            suffix = f" ({year})" if isinstance(year, int) else ""
+            plans[members[0]] = NamePlan(
+                members[0], f"{title}{suffix}{members[0].suffix}"
+            )
+            return tuple(plans[path] for path in files)
+
+        if classification.kind == Kind.TV.value:
+            for path in members:
+                marker = _episode_marker(path.name)
+                if marker is None:
+                    plans[path] = NamePlan(
+                        path, None, "no episode marker in the file name"
+                    )
+                    continue
+                season, episodes = marker
+                plans[path] = NamePlan(
+                    path,
+                    f"{title} - {_episode_tag(season, episodes)}{path.suffix}",
+                )
+            return tuple(plans[path] for path in files)
+
+        for path in members:
+            plans[path] = NamePlan(path, None, "unsupported video kind")
+        return tuple(plans[path] for path in files)

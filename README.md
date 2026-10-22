@@ -5,9 +5,10 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha.** Two commands ship today: the **import/ingest** step
-> (`trovium-ingest`) and **server deployment** (`trovium-deploy`), with
-> qBittorrent as the first download client.
+> **Status: pre-alpha.** Three commands ship today: the **import/ingest** step
+> (`trovium-ingest`), **renaming** (`trovium-rename`), and **server
+> deployment** (`trovium-deploy`), with qBittorrent as the first download
+> client.
 
 ## Why
 
@@ -107,6 +108,37 @@ The `books` profile reads EPUB metadata first, falls back to a Calibre
 > `--mode hardlink`, because the flat library layout does not match the
 > client's `<save_path>/<torrent name>/` expectation and moving the files would
 > break seeding.
+
+### `trovium-rename`
+
+The second pipeline step. It reads an ingest record (stdin by default), asks
+the record's profile for canonical names, and renames the placed files. It is
+dry-runnable and idempotent.
+
+```sh
+# one pipeline
+uv run trovium-ingest --profile books --source ~/Books/incoming \
+  --library-root ~/Media | uv run trovium-rename
+
+# or inspect the plan first
+uv run trovium-ingest --profile books --source ~/Books/incoming \
+  --library-root ~/Media > ingest.json
+uv run trovium-rename --record ingest.json --dry-run
+uv run trovium-rename --record ingest.json
+```
+
+Books become `Author - Title (Year).ext` (or
+`Author - Series #N - Title (Year).ext`); movies become `Title (Year).ext`;
+TV episodes become `Show - S01E01.ext`. Sidecars keep their names. Multi-file
+movies and TV files without an episode marker are `skipped` with a reason.
+
+The default is safe: only `move` records are renamed. A copy/hardlink library
+still has its source, so renaming breaks the ingest no-op rerun; a hardlink
+can also be the file a client is seeding. After seeding stops and the source is
+gone, `--allow-unsafe` permits copy/hardlink and client-relocated items.
+
+Full contract:
+[`specs/004-profile-rename/contracts/`](specs/004-profile-rename/contracts/).
 
 ## Install on a server
 

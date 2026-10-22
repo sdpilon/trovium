@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from trovium.profiles.base import Classification
 from trovium.profiles.video import VideoProfile, classify
 
 
@@ -51,3 +52,62 @@ def test_groups_returns_nothing_for_a_non_media_directory(tmp_path: Path) -> Non
     empty.mkdir()
     (empty / "readme.txt").write_text("x")
     assert VideoProfile().groups(empty) == ()
+
+
+def test_plan_names_movie_uses_title_and_year(tmp_path: Path) -> None:
+    classification = Classification(
+        profile="video",
+        kind="movie",
+        title="Movie Production",
+        details={"year": 2024},
+    )
+    plans = VideoProfile().plan_names(
+        classification, (tmp_path / "Movie.Production.2024.1080p.mkv",)
+    )
+    assert plans[0].name == "Movie Production (2024).mkv"
+
+
+def test_plan_names_tv_uses_the_file_episode_marker(tmp_path: Path) -> None:
+    classification = Classification(
+        profile="video",
+        kind="tv",
+        title="Show Name",
+        details={"season": 1},
+    )
+    plans = VideoProfile().plan_names(
+        classification,
+        (
+            tmp_path / "Show.Name.S01E01E02.1080p.mkv",
+            tmp_path / "Show.Name.S01E03.mkv",
+        ),
+    )
+    assert [plan.name for plan in plans] == [
+        "Show Name - S01E01-E02.mkv",
+        "Show Name - S01E03.mkv",
+    ]
+
+
+def test_plan_names_multi_file_movie_is_skipped(tmp_path: Path) -> None:
+    classification = Classification(
+        profile="video",
+        kind="movie",
+        title="Movie",
+        details={"year": 2024},
+    )
+    plans = VideoProfile().plan_names(
+        classification, (tmp_path / "part1.mkv", tmp_path / "part2.mkv")
+    )
+    assert all(plan.name is None for plan in plans)
+    assert all(plan.reason for plan in plans)
+
+
+def test_plan_names_tv_without_a_marker_is_skipped(tmp_path: Path) -> None:
+    classification = Classification(
+        profile="video",
+        kind="tv",
+        title="Show Name",
+        details={"season": 1},
+    )
+    plans = VideoProfile().plan_names(classification, (tmp_path / "featurette.mkv",))
+    assert plans[0].name is None
+    assert plans[0].reason

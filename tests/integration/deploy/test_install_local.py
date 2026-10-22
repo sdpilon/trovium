@@ -38,7 +38,11 @@ def test_install_creates_a_private_working_installation(
     assert payload["status"] == "ok"
     assert payload["version"] == "0.1.0"
     assert payload["config_path"] == str(layout.config)
-    assert payload["commands"] == ["trovium-deploy", "trovium-ingest"]
+    assert payload["commands"] == [
+        "trovium-deploy",
+        "trovium-ingest",
+        "trovium-rename",
+    ]
 
     mode = stat.S_IMODE(layout.config.stat().st_mode)
     assert mode == 0o600
@@ -48,7 +52,7 @@ def test_install_creates_a_private_working_installation(
     assert f"path = {layout.source}" in text
     assert "mode = disk" in text
 
-    for command in ("trovium-ingest", "trovium-deploy"):
+    for command in ("trovium-ingest", "trovium-rename", "trovium-deploy"):
         executable = layout.bin / command
         assert executable.is_file()
         assert os.access(executable, os.X_OK)
@@ -65,7 +69,11 @@ def test_install_creates_a_private_working_installation(
     assert record["last_operation"]["status"] == "ok"
     for key in ("tool_dir", "bin_dir", "config_path", "uv_path", "python_path"):
         assert Path(record[key]).is_absolute()
-    assert record["commands"] == ["trovium-deploy", "trovium-ingest"]
+    assert record["commands"] == [
+        "trovium-deploy",
+        "trovium-ingest",
+        "trovium-rename",
+    ]
 
     for path in layout.root.rglob("*"):
         if path.is_file() and not path.is_symlink():

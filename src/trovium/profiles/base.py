@@ -46,6 +46,15 @@ class Classification:
     details: Mapping[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class NamePlan:
+    """One file's rename target, or a reason it cannot be named safely."""
+
+    source: Path
+    name: str | None
+    reason: str | None = None
+
+
 class Profile(ABC):
     """A media type's membership, grouping, classification, and layout."""
 
@@ -93,6 +102,6 @@ class Profile(ABC):
 
     def plan_names(
         self, classification: Classification, files: tuple[Path, ...]
-    ) -> tuple[tuple[Path, str], ...]:
-        """Plan file names for the rename step; identity until that step ships."""
-        return tuple((path, path.name) for path in files)
+    ) -> tuple[NamePlan, ...]:
+        """Plan one target name per file; identity by default."""
+        return tuple(NamePlan(path, path.name) for path in files)
