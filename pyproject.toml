@@ -24,6 +24,7 @@ dependencies = ["httpx>=0.27"]
 
 [project.scripts]
 trovium-ingest = "trovium.cli:main"
+trovium-rename = "trovium.rename:main"
 trovium-deploy = "trovium.deploy.cli:main"
 
 [project.urls]

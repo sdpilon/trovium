@@ -181,6 +181,47 @@ def test_destination_uses_unknown_author_and_omits_missing_year(
     )
 
 
+def test_plan_names_author_title_year(tmp_path: Path) -> None:
+    classification = Classification(
+        profile="books",
+        kind="book",
+        title="The Book",
+        details={"author": "Jane Doe", "year": 2020},
+    )
+    plans = BooksProfile().plan_names(
+        classification, (tmp_path / "old.epub", tmp_path / "cover.jpg")
+    )
+    assert plans[0].name == "Jane Doe - The Book (2020).epub"
+    assert plans[1].name == "cover.jpg"
+
+
+def test_plan_names_series_and_unknown_author(tmp_path: Path) -> None:
+    series = Classification(
+        profile="books",
+        kind="book",
+        title="The Book",
+        details={
+            "author": "Jane Doe",
+            "year": 2020,
+            "series": "The Series",
+            "series_index": 2,
+        },
+    )
+    assert BooksProfile().plan_names(series, (tmp_path / "old.epub",))[0].name == (
+        "Jane Doe - The Series #2 - The Book (2020).epub"
+    )
+
+    unknown = Classification(
+        profile="books",
+        kind="book",
+        title="The Book",
+        details={"author": None, "year": None},
+    )
+    assert BooksProfile().plan_names(unknown, (tmp_path / "old.epub",))[0].name == (
+        "The Book.epub"
+    )
+
+
 def test_epub_reader_returns_none_without_container(tmp_path: Path) -> None:
     book = tmp_path / "empty.epub"
     with zipfile.ZipFile(book, "w") as archive:

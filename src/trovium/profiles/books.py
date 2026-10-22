@@ -14,6 +14,7 @@ from pathlib import Path
 from trovium.profiles.base import (
     CandidateGroup,
     Classification,
+    NamePlan,
     Profile,
     safe_component,
 )
@@ -146,6 +147,12 @@ def _is_sidecar(path: Path) -> bool:
     )
 
 
+def _format_index(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
 class BooksProfile(Profile):
     """Ebooks under ``Books/<Author>/<Title> (Year)/``."""
 
@@ -269,3 +276,35 @@ class BooksProfile(Profile):
         year = classification.details.get("year")
         leaf = f"{title} ({year})" if isinstance(year, int) else title
         return library_root / "Books" / author / leaf
+
+    def plan_names(
+        self, classification: Classification, files: tuple[Path, ...]
+    ) -> tuple[NamePlan, ...]:
+        if not classification.title:
+            return tuple(
+                NamePlan(path, None, "no title in the classification") for path in files
+            )
+        base = self._base_name(classification)
+        plans: list[NamePlan] = []
+        for path in files:
+            if self.is_member(path):
+                plans.append(NamePlan(path, f"{base}{path.suffix}"))
+            else:
+                plans.append(NamePlan(path, path.name))
+        return tuple(plans)
+
+    @staticmethod
+    def _base_name(classification: Classification) -> str:
+        details = classification.details
+        title = safe_component(classification.title or "Unknown")
+        year = details.get("year")
+        year_part = f" ({year})" if isinstance(year, int) else ""
+        author = details.get("author")
+        series = details.get("series")
+        index = details.get("series_index")
+
+        prefix = safe_component(str(author)) if author else ""
+        if series is not None and index is not None:
+            series_part = f"{safe_component(str(series))} #{_format_index(index)}"
+            prefix = f"{prefix} - {series_part}" if prefix else series_part
+        return f"{prefix} - {title}{year_part}" if prefix else f"{title}{year_part}"

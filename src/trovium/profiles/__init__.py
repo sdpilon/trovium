@@ -6,7 +6,12 @@ call. The engine never imports a built-in profile directly.
 
 from __future__ import annotations
 
-from trovium.profiles.base import CandidateGroup, Classification, Profile
+from trovium.profiles.base import (
+    CandidateGroup,
+    Classification,
+    NamePlan,
+    Profile,
+)
 from trovium.profiles.books import BooksProfile
 from trovium.profiles.video import VideoProfile
 
@@ -46,6 +51,7 @@ __all__ = [
     "PROFILES",
     "CandidateGroup",
     "Classification",
+    "NamePlan",
     "Profile",
     "available_profiles",
     "get_profile",

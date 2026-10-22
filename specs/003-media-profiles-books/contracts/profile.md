@@ -2,6 +2,10 @@
 
 **Feature**: `003-media-profiles-books` | **Date**: 2026-10-21
 
+> **Update**: `specs/004-profile-rename/contracts/profile.md` changes
+> `plan_names` to return `NamePlan` values. The rest of this contract still
+> applies.
+
 A profile is the media-type module the ingest engine delegates to. It answers
 three questions and nothing else:
 

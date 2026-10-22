@@ -5,8 +5,9 @@ Instructions for agents working in trovium.
 ## What this is
 
 Python ≥3.13, uv-managed collection of **single-purpose CLI tools** replacing
-the *arr media-automation stack. Two commands ship today: `trovium-ingest`
-(classify and place media from a download client or a directory) and
+the *arr media-automation stack. Three commands ship today: `trovium-ingest`
+(classify and place media from a download client or a directory),
+`trovium-rename` (canonicalize the placed files from an ingest record), and
 `trovium-deploy` (install, upgrade, inspect, and uninstall trovium itself).
 Steps exchange plain files/JSON over stdin/stdout; no shared database, no
 hidden state (constitution principles XXV–XXVII in

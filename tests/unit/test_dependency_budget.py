@@ -18,4 +18,5 @@ def test_console_script_is_registered() -> None:
     with PYPROJECT.open("rb") as handle:
         project = tomllib.load(handle)["project"]
     assert project["scripts"]["trovium-ingest"] == "trovium.cli:main"
+    assert project["scripts"]["trovium-rename"] == "trovium.rename:main"
     assert project["scripts"]["trovium-deploy"] == "trovium.deploy.cli:main"
