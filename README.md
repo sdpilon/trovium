@@ -5,10 +5,10 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha.** Three commands ship today: the **import/ingest** step
-> (`trovium-ingest`), **renaming** (`trovium-rename`), and **server
-> deployment** (`trovium-deploy`), with qBittorrent as the first download
-> client.
+> **Status: pre-alpha.** Four commands ship today: the **import/ingest** step
+> (`trovium-ingest`), **renaming** (`trovium-rename`), the **pipeline runner**
+> (`trovium-run`), and **server deployment** (`trovium-deploy`), with
+> qBittorrent as the first download client.
 
 ## Why
 
@@ -117,12 +117,13 @@ dry-runnable and idempotent.
 
 ```sh
 # one pipeline
-uv run trovium-ingest --profile books --source ~/Books/incoming \
-  --library-root ~/Media | uv run trovium-rename
+uv run trovium-ingest \
+    --profile books --source ~/Books/incoming --library-root ~/Media \
+    | uv run trovium-rename
 
 # or inspect the plan first
-uv run trovium-ingest --profile books --source ~/Books/incoming \
-  --library-root ~/Media > ingest.json
+uv run trovium-ingest \
+    --profile books --source ~/Books/incoming --library-root ~/Media > ingest.json
 uv run trovium-rename --record ingest.json --dry-run
 uv run trovium-rename --record ingest.json
 ```
@@ -139,6 +140,31 @@ gone, `--allow-unsafe` permits copy/hardlink and client-relocated items.
 
 Full contract:
 [`specs/004-profile-rename/contracts/`](specs/004-profile-rename/contracts/).
+
+### `trovium-run`
+
+The configured pipeline. It resolves the same options as ingest, runs ingest,
+then runs rename when the record is move-mode and the run is not a dry-run. It
+emits one combined JSON record with `ingest` and `rename` sections. This is the
+command to put behind cron or a systemd timer.
+
+```sh
+# one command, configured source/profile/library
+uv run trovium-run --config ~/.config/trovium/config.ini
+
+# inspect the whole pipeline without placing or renaming
+uv run trovium-run --config ~/.config/trovium/config.ini --dry-run
+
+# books from an explicit source
+uv run trovium-run --profile books --source ~/Books/incoming --library-root ~/Media
+```
+
+Copy/hardlink runs place files but skip rename by default, because the source
+is still present. `--allow-unsafe` passes the rename override through;
+`--skip-rename` runs ingest only.
+
+Full contract:
+[`specs/005-pipeline-runner/contracts/`](specs/005-pipeline-runner/contracts/).
 
 ## Install on a server
 

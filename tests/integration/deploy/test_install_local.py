@@ -42,6 +42,7 @@ def test_install_creates_a_private_working_installation(
         "trovium-deploy",
         "trovium-ingest",
         "trovium-rename",
+        "trovium-run",
     ]
 
     mode = stat.S_IMODE(layout.config.stat().st_mode)
@@ -52,7 +53,12 @@ def test_install_creates_a_private_working_installation(
     assert f"path = {layout.source}" in text
     assert "mode = disk" in text
 
-    for command in ("trovium-ingest", "trovium-rename", "trovium-deploy"):
+    for command in (
+        "trovium-ingest",
+        "trovium-rename",
+        "trovium-run",
+        "trovium-deploy",
+    ):
         executable = layout.bin / command
         assert executable.is_file()
         assert os.access(executable, os.X_OK)
@@ -73,6 +79,7 @@ def test_install_creates_a_private_working_installation(
         "trovium-deploy",
         "trovium-ingest",
         "trovium-rename",
+        "trovium-run",
     ]
 
     for path in layout.root.rglob("*"):

@@ -570,6 +570,42 @@ def run_client(
     return summary
 
 
+def run_resolved(*, resolved: ResolvedOptions, dry_run: bool) -> RunSummary:
+    """Run the declared source and return the record, without emitting it.
+
+    Raises ``AdapterError`` for a run-level client failure; callers map that
+    to exit code 3. This is the reusable half of ``main`` that the pipeline
+    runner composes.
+    """
+    declared = declared_options(resolved)
+    if resolved.source is not None:
+        return run_disk(
+            resolved.source,
+            resolved.library_root,
+            declared,
+            dry_run,
+            resolved.profile,
+        )
+
+    assert resolved.client_url is not None  # resolve_options() guarantees it
+    client = QbittorrentClient(
+        resolved.client_url,
+        os.environ.get(resolved.client_username_env),
+        os.environ.get(resolved.client_password_env),
+    )
+    try:
+        client.login()
+        return run_client(
+            client,
+            resolved.library_root,
+            declared,
+            dry_run,
+            resolved.profile,
+        )
+    finally:
+        client.close()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point: parse, refuse misuse, run, emit the record."""
     parser = build_parser()
@@ -581,38 +617,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         fail(str(misuse))
         return EXIT_MISUSE
 
-    declared = declared_options(resolved)
-    dry_run = bool(args.dry_run)
-
-    if resolved.source is not None:
-        summary = run_disk(
-            resolved.source,
-            resolved.library_root,
-            declared,
-            dry_run,
-            resolved.profile,
-        )
-    else:
-        assert resolved.client_url is not None  # resolve_options() guarantees it
-        client = QbittorrentClient(
-            resolved.client_url,
-            os.environ.get(resolved.client_username_env),
-            os.environ.get(resolved.client_password_env),
-        )
-        try:
-            client.login()
-            summary = run_client(
-                client,
-                resolved.library_root,
-                declared,
-                dry_run,
-                resolved.profile,
-            )
-        except AdapterError as error:
-            fail(str(error))
-            return EXIT_CLIENT_FAILURE
-        finally:
-            client.close()
+    try:
+        summary = run_resolved(resolved=resolved, dry_run=bool(args.dry_run))
+    except AdapterError as error:
+        fail(str(error))
+        return EXIT_CLIENT_FAILURE
 
     emit(summary, resolved.json_style)
     return EXIT_OK
