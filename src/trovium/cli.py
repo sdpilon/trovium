@@ -17,13 +17,13 @@ from pathlib import Path
 
 from trovium.adapters.qbittorrent import AdapterError
 from trovium.adapters.qbittorrent import QbittorrentClient as QbittorrentClient
-from trovium.classify import Classification, Kind, classify
 from trovium.config import ConfigError, load_config
-from trovium.library import compare_existing, resolve_destination
+from trovium.library import compare_existing
 from trovium.placement import apply_placement, plan_placement
+from trovium.profiles import available_profiles, get_profile
+from trovium.profiles.base import CandidateGroup, Classification, Profile
 from trovium.record import (
     ActionKind,
-    Category,
     ClientAction,
     Declared,
     Disposition,
@@ -69,7 +69,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="configuration file (default: XDG trovium/config.ini)",
     )
-    parser.add_argument("--category", choices=[item.value for item in Category])
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="media profile (default: video; see --help for the registry)",
+    )
+    parser.add_argument(
+        "--category",
+        default=None,
+        help="declared scope; the selected profile defines the values",
+    )
     parser.add_argument("--mode", choices=[item.value for item in Mode])
     parser.add_argument(
         "--post-ingest",
@@ -91,10 +100,11 @@ class MisuseError(Exception):
 class ResolvedOptions:
     """The effective options after CLI, environment, and config precedence."""
 
+    profile: Profile
     library_root: Path
     source: Path | None
     client_url: str | None
-    category: Category
+    category: str
     mode: Mode
     post_ingest: PostIngest | None
     on_fail: OnFail
@@ -167,11 +177,32 @@ def resolve_options(args: argparse.Namespace) -> ResolvedOptions:
     if not os.access(library_root, os.W_OK | os.X_OK):
         raise MisuseError(f"--library-root is not writable: {library_root}")
 
-    category_value = _first(
-        args.category,
-        config.ingest.category.value if config is not None else None,
-        Category.ALL.value,
+    profile_value = _first(
+        args.profile,
+        config.ingest.profile if config is not None else None,
+        "video",
     )
+    try:
+        profile = get_profile(str(profile_value))
+    except KeyError as error:
+        allowed = ", ".join(available_profiles())
+        raise MisuseError(
+            f"--profile must be one of: {allowed} (got {profile_value!r})"
+        ) from error
+
+    category_value = str(
+        _first(
+            args.category,
+            config.ingest.category if config is not None else None,
+            "all",
+        )
+    )
+    if category_value not in profile.categories:
+        allowed = ", ".join(profile.categories)
+        raise MisuseError(
+            f"--category for profile '{profile.name}' must be one of: {allowed}"
+        )
+
     mode_value = _first(
         args.mode,
         config.ingest.mode.value if config is not None else None,
@@ -197,10 +228,11 @@ def resolve_options(args: argparse.Namespace) -> ResolvedOptions:
         post_ingest = PostIngest(str(post_value))
 
     return ResolvedOptions(
+        profile=profile,
         library_root=library_root,
         source=source,
         client_url=client_url,
-        category=Category(str(category_value)),
+        category=category_value,
         mode=Mode(str(mode_value)),
         post_ingest=post_ingest,
         on_fail=OnFail(str(on_fail_value)),
@@ -221,6 +253,7 @@ def resolve_options(args: argparse.Namespace) -> ResolvedOptions:
 def declared_options(resolved: ResolvedOptions) -> Declared:
     """Echo the run's declared options into the record."""
     return Declared(
+        profile=resolved.profile.name,
         library_root=str(resolved.library_root),
         category=resolved.category,
         mode=resolved.mode,
@@ -229,11 +262,9 @@ def declared_options(resolved: ResolvedOptions) -> Declared:
     )
 
 
-def in_scope(classification: Classification, category: Category) -> bool:
-    """Declared scope filter; unresolvable candidates stay visible (T017)."""
-    if classification.kind is Kind.UNRESOLVABLE or category is Category.ALL:
-        return True
-    return classification.kind.value == category.value
+def in_scope(kind: str, category: str) -> bool:
+    """Declared scope filter; unresolvable candidates never reach this."""
+    return category == "all" or kind == category
 
 
 def process(
@@ -241,6 +272,8 @@ def process(
     library_root: Path,
     declared: Declared,
     dry_run: bool,
+    *,
+    profile: Profile,
     guard: Callable[[Candidate, Classification], str | None] | None = None,
 ) -> ItemRecord:
     """Classify and (unless dry-run) place one candidate.
@@ -266,28 +299,30 @@ def process(
             disposition=Disposition.REJECTED_OUT_OF_SCOPE,
             reason=f"no ingestable media files{where}",
         )
-    classification = classify(
-        candidate.name, tuple(path.name for path in candidate.files)
+    group = CandidateGroup(
+        name=candidate.name, files=candidate.files, root=candidate.root
     )
-    if classification.kind is Kind.UNRESOLVABLE:
+    classification = profile.classify(group)
+    if classification is None:
         return ItemRecord(
             name=candidate.name,
             source=candidate.source,
             disposition=Disposition.UNRESOLVABLE,
-            reason="name grammar not confidently matched",
+            reason=f"{profile.name} name grammar not confidently matched",
         )
-    if not in_scope(classification, declared.category):
+    if not in_scope(classification.kind, declared.category):
         return ItemRecord(
             name=candidate.name,
             source=candidate.source,
             disposition=Disposition.REJECTED_OUT_OF_SCOPE,
-            reason=f"outside the declared category scope ({declared.category.value})",
-            kind=classification.kind.value,
+            reason=f"outside the declared category scope ({declared.category})",
+            kind=classification.kind,
             title=classification.title,
+            details=dict(classification.details) or None,
         )
     refusal = guard(candidate, classification) if guard is not None else None
 
-    destination = resolve_destination(classification, library_root)
+    destination = profile.destination(classification, library_root)
     existing = compare_existing(destination, candidate.files)
     plan = plan_placement(declared.mode, candidate.files, destination, existing)
     if refusal is not None:
@@ -297,8 +332,9 @@ def process(
                 source=candidate.source,
                 disposition=Disposition.ERROR,
                 reason=refusal,
-                kind=classification.kind.value,
+                kind=classification.kind,
                 title=classification.title,
+                details=dict(classification.details) or None,
             )
         if plan.disposition is Disposition.ALREADY_HANDLED:
             # the client seeds from those copies; suppress the move cleanup
@@ -315,23 +351,28 @@ def process(
         source=candidate.source,
         disposition=plan.disposition,
         reason=plan.reason,
-        kind=classification.kind.value,
+        kind=classification.kind,
         title=classification.title,
+        details=dict(classification.details) or None,
         destination=None if plan.destination is None else str(plan.destination),
         actions=list(plan.actions),
     )
 
 
 def run_disk(
-    source: Path, library_root: Path, declared: Declared, dry_run: bool
+    source: Path,
+    library_root: Path,
+    declared: Declared,
+    dry_run: bool,
+    profile: Profile,
 ) -> RunSummary:
     """The disk-mode run flow (Story P1)."""
-    candidates = disk_candidates(source)
+    candidates = disk_candidates(source, profile)
     summary = RunSummary(
         source=Source.DISK, dry_run=dry_run, declared=declared, items=[]
     )
     for candidate in candidates:
-        record = process(candidate, library_root, declared, dry_run)
+        record = process(candidate, library_root, declared, dry_run, profile=profile)
         summary.items.append(record)
         if record.disposition is Disposition.ERROR and declared.on_fail is OnFail.STOP:
             break
@@ -410,6 +451,7 @@ def run_client(
     library_root: Path,
     declared: Declared,
     dry_run: bool,
+    profile: Profile,
 ) -> RunSummary:
     """The client-mode run flow (Story P2); caller handles AdapterError."""
     entries = client.entries()
@@ -425,7 +467,8 @@ def run_client(
                 entry.category,
             )
             for entry in entries
-        )
+        ),
+        profile,
     )
     summary = RunSummary(
         source=Source.CLIENT, dry_run=dry_run, declared=declared, items=[]
@@ -447,6 +490,7 @@ def run_client(
             library_root,
             declared,
             dry_run,
+            profile=profile,
             guard=_client_move_guard(declared),
         )
         torrent_hash = candidate.client_hash
@@ -515,6 +559,7 @@ def run_client(
                     reason=f"placement succeeded but client update failed: {error}",
                     kind=record.kind,
                     title=record.title,
+                    details=record.details,
                     destination=record.destination,
                     actions=record.actions,
                     client_actions=record.client_actions,
@@ -540,7 +585,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     dry_run = bool(args.dry_run)
 
     if resolved.source is not None:
-        summary = run_disk(resolved.source, resolved.library_root, declared, dry_run)
+        summary = run_disk(
+            resolved.source,
+            resolved.library_root,
+            declared,
+            dry_run,
+            resolved.profile,
+        )
     else:
         assert resolved.client_url is not None  # resolve_options() guarantees it
         client = QbittorrentClient(
@@ -550,7 +601,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         try:
             client.login()
-            summary = run_client(client, resolved.library_root, declared, dry_run)
+            summary = run_client(
+                client,
+                resolved.library_root,
+                declared,
+                dry_run,
+                resolved.profile,
+            )
         except AdapterError as error:
             fail(str(error))
             return EXIT_CLIENT_FAILURE

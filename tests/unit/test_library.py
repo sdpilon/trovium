@@ -1,4 +1,4 @@
-"""Unit tests: destination resolution and convention-based already-handled."""
+"""Unit tests: convention-based already-handled comparison."""
 
 from __future__ import annotations
 
@@ -6,38 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from trovium.classify import classify
-from trovium.library import (
-    Sameness,
-    collect_media_files,
-    compare_existing,
-    resolve_destination,
-)
-
-
-def test_movie_destination_uses_movies_root_and_year(tmp_path: Path) -> None:
-    classification = classify("Movie.Production.2024.1080p-iGor")
-    destination = resolve_destination(classification, tmp_path)
-    assert destination == tmp_path / "Movies" / "Movie Production (2024)"
-
-
-def test_tv_destination_uses_tv_root_show_and_season(tmp_path: Path) -> None:
-    classification = classify("Shameless.US.S05E10.720p-HDTV", ("a.mkv",))
-    destination = resolve_destination(classification, tmp_path)
-    assert destination == tmp_path / "TV" / "Shameless US" / "Season 05"
-
-
-def test_collect_media_files_skips_samples_and_non_media(tmp_path: Path) -> None:
-    release = tmp_path / "Release"
-    release.mkdir()
-    (release / "movie.mkv").write_bytes(b"data")
-    (release / "sample-movie.mkv").write_bytes(b"data")
-    (release / "notes.txt").write_text("x")
-    nested = release / "Subs"
-    nested.mkdir()
-    (nested / "more.mp4").write_bytes(b"data")
-    names = sorted(path.name for path in collect_media_files(release))
-    assert names == ["more.mp4", "movie.mkv"]
+from trovium.library import Sameness, compare_existing
 
 
 def test_compare_existing_none_when_absent(tmp_path: Path) -> None:

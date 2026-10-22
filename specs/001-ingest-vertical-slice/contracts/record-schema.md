@@ -2,6 +2,10 @@
 
 **Feature**: `001-ingest-vertical-slice` | **Date**: 2026-10-17
 
+> **Profile-aware v2**: `specs/003-media-profiles-books/contracts/record-schema.md`
+> adds `declared.profile`, profile-defined `kind`/`category`, and an optional
+> per-item `details` object. The envelope and video values below still hold.
+
 The stable machine-readable record emitted every run (SC-004, FR-007).
 Formatting only (`--json {compact|pretty}`); the data shape is fixed.
 Contract tests pin field names and enums.

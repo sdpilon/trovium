@@ -1,8 +1,9 @@
 """Candidate enumeration for both declared sources.
 
-Disk mode: each direct child of ``--source`` (file or directory) is exactly one
-candidate (FR-013). Client mode: candidates come from the single qBittorrent
-adapter and are adapted to the same shape here.
+Disk mode: each direct child of ``--source`` is one source entry; the active
+profile decides whether it yields one candidate, several (for example one
+ebook per file), or none. Client mode: one torrent is one candidate, with the
+profile deciding which of its files travel with it.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from trovium.library import collect_media_files
+from trovium.profiles.base import Profile
 from trovium.record import Source
 
 
@@ -43,17 +44,30 @@ class Candidate:
     client_hash: str | None = None
 
 
-def disk_candidates(source_dir: Path) -> tuple[Candidate, ...]:
-    """Each direct child entry of ``source_dir`` is one candidate (FR-013)."""
+def disk_candidates(source_dir: Path, profile: Profile) -> tuple[Candidate, ...]:
+    """Each direct child is one entry; the profile splits it into candidates."""
     candidates: list[Candidate] = []
     for child in sorted(source_dir.iterdir()):
-        candidates.append(
-            Candidate(
-                name=child.name,
-                source=Source.DISK,
-                files=collect_media_files(child),
-                root=child,
+        groups = profile.groups(child)
+        if not groups:
+            # Keep the entry visible in the record as rejected/out of scope.
+            candidates.append(
+                Candidate(
+                    name=child.name,
+                    source=Source.DISK,
+                    files=(),
+                    root=child,
+                )
             )
+            continue
+        candidates.extend(
+            Candidate(
+                name=group.name,
+                source=Source.DISK,
+                files=group.files,
+                root=group.root if group.root is not None else child,
+            )
+            for group in groups
         )
     return tuple(candidates)
 
@@ -62,13 +76,14 @@ def client_candidates(
     entries: tuple[
         tuple[str, str, Path, Path, CompletionState, ClientState, str | None], ...
     ],
+    profile: Profile,
 ) -> tuple[Candidate, ...]:
-    """Adapt adapter-reported entries to candidates (same shape as disk)."""
+    """Adapt adapter-reported entries to candidates (one torrent, one item)."""
     return tuple(
         Candidate(
             name=name,
             source=Source.CLIENT,
-            files=collect_media_files(content_path),
+            files=profile.collect_files(content_path),
             root=root_path,
             completion=completion,
             client_state=client_state,

@@ -39,17 +39,22 @@ The full set of project principles lives in the
 ### `trovium-ingest`
 
 The import/ingest step. It takes candidates from either a download client
-(qBittorrent, through the single adapter) or a directory of media already on
-disk, classifies each as a movie / TV / unresolvable using its own names only,
-places resolvable items into the library (folder structure derived; original
-file names preserved), and prints a machine-readable JSON run record. Every
-candidate appears in the record once with a `disposition` (`ingested`,
-`already_handled`, `not_yet_complete`, `unresolvable`,
-`rejected_out_of_scope`, or `error`), so nothing is dropped silently.
+(qBittorrent, through the single adapter) or a directory of files already on
+disk, classifies each through the selected **media profile** (video:
+movie/TV; books: ebook), places resolvable items into the library (folder
+structure derived; original file names preserved), and prints a
+machine-readable JSON run record. Every candidate appears in the record once
+with a `disposition` (`ingested`, `already_handled`, `not_yet_complete`,
+`unresolvable`, `rejected_out_of_scope`, or `error`), so nothing is dropped
+silently. Profiles are how a new media type reuses this step instead of
+becoming a new application; see [`docs/profiles.md`](docs/profiles.md).
 
 ```sh
 # disk source — no download client involved
 uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media
+
+# ebooks
+uv run trovium-ingest --profile books --source ~/Books/incoming --library-root ~/Media
 
 # inspect what would happen, changing nothing
 uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media --dry-run
@@ -65,18 +70,19 @@ The command exits `0` when the run completed — per-item problems are recorded,
 not fatal — `2` on misuse, and `3` on a run-level client failure (unreachable,
 unauthenticated, or a malformed response).
 
-| Option                              | Default              | Notes                                                                                  |
-| ----------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
-| `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url` |
-| `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                             |
-| `--library-root PATH`               | required             | library destination root                                                               |
-| `--config PATH`                     | XDG                  | configuration file (default: XDG `trovium/config.ini`)                                 |
-| `--category {movie,tv,all}`         | `all`                | declared run scope                                                                     |
-| `--mode {move,copy,hardlink}`       | `move`               | placement semantics                                                                    |
-| `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                  |
-| `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                        |
-| `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                              |
-| `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                   |
+| Option                              | Default              | Notes                                                                                     |
+| ----------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url`    |
+| `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                                |
+| `--library-root PATH`               | required             | library destination root                                                                  |
+| `--config PATH`                     | XDG                  | configuration file (default: XDG `trovium/config.ini`)                                    |
+| `--profile NAME`                    | `video`              | media profile (`video`, `books`)                                                          |
+| `--category VALUE`                  | `all`                | declared run scope; the profile defines the values (video: movie/tv/all; books: book/all) |
+| `--mode {move,copy,hardlink}`       | `move`               | placement semantics                                                                       |
+| `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                     |
+| `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                           |
+| `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                                 |
+| `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                      |
 
 `--source`, `--client-url`, `--library-root`, and `--config` also read
 environment fallbacks (`TROVIUM_SOURCE`, `TROVIUM_CLIENT_URL`,
@@ -84,7 +90,15 @@ environment fallbacks (`TROVIUM_SOURCE`, `TROVIUM_CLIENT_URL`,
 environment → config file → built-in defaults.
 
 Full contracts live in
-[`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/).
+[`specs/001-ingest-vertical-slice/contracts/`](specs/001-ingest-vertical-slice/contracts/)
+and the profile-aware updates in
+[`specs/003-media-profiles-books/contracts/`](specs/003-media-profiles-books/contracts/).
+
+The `books` profile reads EPUB metadata first, falls back to a Calibre
+`metadata.opf` sidecar, then to a conservative filename grammar
+(`Author - Title (Year)` and a few close variants). Ebooks land under
+`Books/<Author>/<Title> (Year)/`; ambiguous names are reported as
+`unresolvable` rather than guessed. Original filenames are preserved.
 
 > **Client-mode note.** With `--mode move`, the client is pointed at the
 > library folder (`setLocation`). That is safe for single-file torrents only;

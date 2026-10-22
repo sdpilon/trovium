@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from trovium.config import IngestSettings, load_config, write_default_config
-from trovium.record import Category, JsonStyle, Mode, OnFail, PostIngest
+from trovium.record import JsonStyle, Mode, OnFail, PostIngest
 
 
 def test_generated_config_has_documented_defaults(tmp_path: Path) -> None:
@@ -23,7 +23,8 @@ def test_generated_config_has_documented_defaults(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.config.library_root == library
     assert loaded.config.source.mode == "disk"
-    assert loaded.config.ingest.category is Category.ALL
+    assert loaded.config.ingest.profile == "video"
+    assert loaded.config.ingest.category == "all"
     assert loaded.config.ingest.mode is Mode.MOVE
     assert loaded.config.ingest.post_ingest is PostIngest.KEEP
     assert loaded.config.ingest.on_fail is OnFail.CONTINUE

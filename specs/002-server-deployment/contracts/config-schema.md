@@ -2,6 +2,10 @@
 
 **Feature**: `002-server-deployment` | **Date**: 2026-10-19
 
+> **Profile-aware addendum**: `specs/003-media-profiles-books/contracts/config-schema.md`
+> adds optional `[ingest] profile` (default `video`) and makes `[ingest]
+category` profile-dependent. Existing schema-1 files remain valid.
+
 The configuration file is a single INI document read by `trovium-deploy` and
 `trovium-ingest`. It stores settings, never credential values.
 

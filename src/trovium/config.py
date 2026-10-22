@@ -17,7 +17,8 @@ from enum import StrEnum
 from pathlib import Path
 from urllib.parse import urlparse
 
-from trovium.record import Category, JsonStyle, Mode, OnFail, PostIngest
+from trovium.profiles import available_profiles, get_profile
+from trovium.record import JsonStyle, Mode, OnFail, PostIngest
 
 SCHEMA_VERSION = 1
 CONFIG_FILE_ENV = "TROVIUM_CONFIG_FILE"
@@ -46,7 +47,8 @@ class SourceSettings:
 class IngestSettings:
     """Defaults passed to the ingest step."""
 
-    category: Category = Category.ALL
+    profile: str = "video"
+    category: str = "all"
     mode: Mode = Mode.MOVE
     post_ingest: PostIngest = PostIngest.KEEP
     on_fail: OnFail = OnFail.CONTINUE
@@ -197,13 +199,22 @@ def parse_config(path: Path) -> tuple[TroviumConfig, tuple[str, ...]]:
     _validate_env_name(username_env, name="client_username_env")
     _validate_env_name(password_env, name="client_password_env")
 
+    profile_name = _optional(parser, "ingest", "profile") or "video"
+    try:
+        profile = get_profile(profile_name)
+    except KeyError as error:
+        allowed = ", ".join(available_profiles())
+        raise ConfigError(f"ingest profile must be one of: {allowed}") from error
+    category = _optional(parser, "ingest", "category") or "all"
+    if category not in profile.categories:
+        allowed = ", ".join(profile.categories)
+        raise ConfigError(
+            f"ingest category for profile '{profile.name}' must be one of: {allowed}"
+        )
+
     ingest = IngestSettings(
-        category=_parse_enum(
-            _optional(parser, "ingest", "category"),
-            Category,
-            name="ingest category",
-            default=Category.ALL,
-        ),
+        profile=profile.name,
+        category=category,
         mode=_parse_enum(
             _optional(parser, "ingest", "mode"),
             Mode,
@@ -334,7 +345,8 @@ def write_default_config(
         section["client_password_env"] = DEFAULT_CLIENT_PASSWORD_ENV
         parser["source"] = section
     parser["ingest"] = {
-        "category": settings.category.value,
+        "profile": settings.profile,
+        "category": settings.category,
         "mode": settings.mode.value,
         "post_ingest": settings.post_ingest.value,
         "on_fail": settings.on_fail.value,

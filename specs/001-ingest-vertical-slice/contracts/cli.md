@@ -2,6 +2,10 @@
 
 **Feature**: `001-ingest-vertical-slice` | **Date**: 2026-10-17
 
+> **Profile-aware update**: `specs/003-media-profiles-books/contracts/cli.md`
+> adds `--profile` and makes `--category` profile-dependent. The video
+> defaults and every other option below are unchanged.
+
 The stable surface of the `trovium-ingest` command. Contract tests pin this
 document's schema.
 
