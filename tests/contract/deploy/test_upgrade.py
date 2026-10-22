@@ -26,7 +26,11 @@ def test_upgrade_report_fields_and_config_preservation(
     assert payload["version"] == "0.2.0"
     assert payload["previous_version"] == "0.1.0"
     assert layout.config.read_bytes() == before
-    assert payload["commands"] == ["trovium-deploy", "trovium-ingest"]
+    assert payload["commands"] == [
+        "trovium-deploy",
+        "trovium-ingest",
+        "trovium-rename",
+    ]
 
 
 def test_downgrade_by_pinned_bundle(
