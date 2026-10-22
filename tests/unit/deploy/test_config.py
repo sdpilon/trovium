@@ -17,7 +17,7 @@ from trovium.config import (
     parse_config,
     write_default_config,
 )
-from trovium.record import Category, Mode
+from trovium.record import Mode
 
 
 def test_write_load_and_permissions(tmp_path: Path) -> None:
@@ -31,14 +31,15 @@ def test_write_load_and_permissions(tmp_path: Path) -> None:
         library_root=library,
         source_mode="disk",
         source_path=source,
-        ingest=IngestSettings(category=Category.TV, mode=Mode.COPY),
+        ingest=IngestSettings(category="tv", mode=Mode.COPY),
     )
     loaded = load_config(path, required=True)
     assert loaded is not None
     assert loaded.config.library_root == library
     assert loaded.config.source.mode == "disk"
     assert loaded.config.source.path == source
-    assert loaded.config.ingest.category is Category.TV
+    assert loaded.config.ingest.profile == "video"
+    assert loaded.config.ingest.category == "tv"
     assert loaded.config.ingest.mode is Mode.COPY
     assert path.stat().st_mode & 0o777 == 0o600
 

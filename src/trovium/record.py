@@ -30,14 +30,6 @@ class Mode(StrEnum):
     HARDLINK = "hardlink"
 
 
-class Category(StrEnum):
-    """Declared run scope."""
-
-    MOVIE = "movie"
-    TV = "tv"
-    ALL = "all"
-
-
 class PostIngest(StrEnum):
     """Client-side policy applied after a successful placement."""
 
@@ -125,6 +117,7 @@ class ItemRecord:
     reason: str | None = None
     kind: str | None = None
     title: str | None = None
+    details: dict[str, object] | None = None
     destination: str | None = None
     actions: list[Action] = field(default_factory=list)
     client_actions: list[ClientAction] = field(default_factory=list)
@@ -141,6 +134,8 @@ class ItemRecord:
             "destination": self.destination,
             "actions": [action.to_json() for action in self.actions],
         }
+        if self.details:
+            payload["details"] = self.details
         if self.client_actions:
             payload["client_actions"] = [
                 action.to_json() for action in self.client_actions
@@ -152,8 +147,9 @@ class ItemRecord:
 class Declared:
     """The run's declared options, echoed into the record."""
 
+    profile: str
     library_root: str
-    category: Category
+    category: str
     mode: Mode
     on_fail: OnFail
     post_ingest: PostIngest | None
@@ -161,8 +157,9 @@ class Declared:
     def to_json(self) -> dict[str, Any]:
         """Serialize the declared options."""
         return {
+            "profile": self.profile,
             "library_root": self.library_root,
-            "category": self.category.value,
+            "category": self.category,
             "mode": self.mode.value,
             "on_fail": self.on_fail.value,
             "post_ingest": None if self.post_ingest is None else self.post_ingest.value,

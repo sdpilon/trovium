@@ -18,6 +18,12 @@ Feature work runs through the spec-kit flow: `/speckit.specify → /speckit.plan
 feature). Implementation does not start without an agreed spec (XXIV).
 Personal overrides go in `AGENTS.local.md` (gitignored).
 
+Media types live in `src/trovium/profiles/`: a profile owns membership,
+grouping, classification, and layout; the ingest engine stays generic. Add a
+profile by implementing the contract and registering it; read
+[`docs/profiles.md`](docs/profiles.md) first. A new _capability_ is a new
+pipeline step, not a larger profile.
+
 ## Commands
 
 ```sh
@@ -42,6 +48,33 @@ Long-running commands must be started in the background and followed live.
 For the spec-gates test and gate runs (`scripts/check.sh`, `verify.sh`,
 pre-commit hooks, CI gate watches), use
 `.opencode/skills/background-and-follow/SKILL.md`.
+
+## Right-sized feature work
+
+The spec flow is a tool, not a ritual. Match the artifact to the slice:
+
+- Default: one `spec.md` (problem, 3-5 success criteria) and one `tasks.md`
+  (at most ~15 tasks). Put approach decisions in `spec.md`.
+- Add `plan.md`, `research.md`, `data-model.md`, or `quickstart.md` only when
+  the slice crosses more than ~5 files or more than one work session. Do not
+  generate all six by default.
+- `analyze` and `checklist` are optional. Use them for high-risk or ambiguous
+  features, not every slice.
+- Acceptance: one `accept` block per core user-visible criterion. Cover the
+  rest with normal tests. Do not turn every success criterion into a separate
+  install/deploy scenario.
+
+## Workflow budget
+
+- Auto-commit is off (`.specify/extensions/git/git-config.yml`). Commit at
+  coherent chunk boundaries, not after every spec-kit command.
+- The full gate (`scripts/check.sh`) is the pre-PR proof, not a per-keystroke
+  ritual. Run it once when the slice is ready, in the background, and open the
+  PR after it is green. The pre-commit hook runs it too, so keep commits
+  deliberate.
+- Until the next product slice is merged, do not change `.specify/`,
+  `.opencode/`, `.claude/`, `.github/`, or `tools/` unless the user explicitly
+  asks. Infrastructure work is not a substitute for product work.
 
 ## Rules that gate you (they will refuse, not warn)
 
@@ -100,6 +133,9 @@ pre-commit hooks, CI gate watches), use
   `/speckit.gates.*` commands, never by patching files.
 - `.specify/gates/policy.json` is user-owned: seeded once, never overwritten by
   upgrades. A human edits it, and the commit needs the trailer.
+- `.specify/extensions/git/git-config.yml` is user configuration, not a
+  projection: the git extension reads it directly, and upgrades do not
+  overwrite it. Edit it to change auto-commit or branch behavior.
 - `.opencode/plugins/gates/`, `.opencode/skills/`, and `tools/` are
   hand-written and in scope for linting.
 

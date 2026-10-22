@@ -45,7 +45,8 @@ def test_config_supplies_client_mode_and_enums(tmp_path: Path) -> None:
 
     assert resolved.library_root == (tmp_path / "library").resolve()
     assert resolved.client_url == "http://127.0.0.1:8080"
-    assert resolved.category.value == "tv"
+    assert resolved.profile.name == "video"
+    assert resolved.category == "tv"
     assert resolved.mode.value == "copy"
     assert resolved.on_fail.value == "stop"
     assert resolved.json_style.value == "compact"

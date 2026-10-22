@@ -1,17 +1,23 @@
-"""Classification of candidates from their own names only.
+"""The video profile: movies, TV episodes, and season packs.
 
-Vocabulary and precedence are pinned in
+The grammar and precedence are pinned in
 ``specs/001-ingest-vertical-slice/data-model.md`` (Canonical grammar markers);
-anything outside the grammar resolves to ``unresolvable`` -- this module never
-guesses (FR-002).
+anything outside the grammar resolves to ``None`` -- this profile never guesses
+(FR-002).
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+
+from trovium.profiles.base import (
+    CandidateGroup,
+    Classification,
+    Profile,
+    safe_component,
+)
 
 VIDEO_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -84,33 +90,14 @@ _SEASON_PHRASE = re.compile(r"season[\s._-]?(\d{1,2})", re.IGNORECASE)
 
 
 class Kind(StrEnum):
-    """Resolved candidate kind."""
+    """Resolved video kind."""
 
     MOVIE = "movie"
     TV = "tv"
-    UNRESOLVABLE = "unresolvable"
-
-
-@dataclass(frozen=True)
-class Classification:
-    """The resolved meaning of one candidate's names."""
-
-    kind: Kind
-    title: str | None = None
-    season: int | None = None
-    episodes: tuple[tuple[int, int], ...] = field(default=())
-    year: int | None = None
-
-
-UNRESOLVABLE = Classification(kind=Kind.UNRESOLVABLE)
 
 
 def _tokens(name: str) -> list[str]:
-    """Split a candidate name into tokens, dropping a known video extension.
-
-    The extension set comes from ``VIDEO_EXTENSIONS`` so there is one source of
-    truth for what counts as a media suffix.
-    """
+    """Split a candidate name into tokens, dropping a known video extension."""
     path = Path(name)
     stem = path.stem if path.suffix.lower() in VIDEO_EXTENSIONS else path.name
     return [token for token in re.split(r"[\s._\-\[\]()]+", stem) if token]
@@ -137,15 +124,15 @@ def _title_from(tokens: list[str]) -> str:
     return " ".join(kept).strip()
 
 
-def classify(name: str, file_names: tuple[str, ...] = ()) -> Classification:
-    """Classify a candidate by name; never guess (FR-002).
+def classify(name: str, file_names: tuple[str, ...] = ()) -> Classification | None:
+    """Classify a video candidate by name; never guess (FR-002).
 
     Precedence: TV episode marker, then TV pack marker, then movie-with-year;
-    no title tokens at all resolves to ``unresolvable``.
+    no title tokens at all resolves to ``None``.
     """
     tokens = _tokens(name)
     if not tokens:
-        return UNRESOLVABLE
+        return None
 
     episode_match = _EPISODE.search(name)
     if episode_match is not None:
@@ -157,9 +144,12 @@ def classify(name: str, file_names: tuple[str, ...] = ()) -> Classification:
             episodes.append((season, int(extra.group(1))))
         title = _title_from(tokens)
         if not title:
-            return UNRESOLVABLE
+            return None
         return Classification(
-            kind=Kind.TV, title=title, season=season, episodes=tuple(episodes)
+            profile=VideoProfile.name,
+            kind=Kind.TV.value,
+            title=title,
+            details={"season": season, "episodes": tuple(episodes)},
         )
 
     pack_season = _SEASON_ONLY.search(name) or _SEASON_PHRASE.search(name)
@@ -167,7 +157,12 @@ def classify(name: str, file_names: tuple[str, ...] = ()) -> Classification:
         season_value = next((group for group in pack_season.groups() if group), None)
         title = _title_from(tokens)
         if title and season_value and _holds_multiple_media(file_names):
-            return Classification(kind=Kind.TV, title=title, season=int(season_value))
+            return Classification(
+                profile=VideoProfile.name,
+                kind=Kind.TV.value,
+                title=title,
+                details={"season": int(season_value)},
+            )
 
     year_match = _YEAR.search(name)
     if year_match is not None:
@@ -175,10 +170,13 @@ def classify(name: str, file_names: tuple[str, ...] = ()) -> Classification:
         title = _title_from(tokens_before)
         if title:
             return Classification(
-                kind=Kind.MOVIE, title=title, year=int(year_match.group(0))
+                profile=VideoProfile.name,
+                kind=Kind.MOVIE.value,
+                title=title,
+                details={"year": int(year_match.group(0))},
             )
 
-    return UNRESOLVABLE
+    return None
 
 
 def _holds_multiple_media(file_names: tuple[str, ...]) -> bool:
@@ -191,7 +189,41 @@ def is_media_file(name: str) -> bool:
     return Path(name).suffix.lower() in VIDEO_EXTENSIONS
 
 
-def is_incidental(name: str) -> bool:
+def is_incidental_name(name: str) -> bool:
     """True for release clutter that must never be ingested on its own."""
     stem = Path(name).stem.lower()
     return "sample" in stem or stem.startswith("rarbg")
+
+
+class VideoProfile(Profile):
+    """Movies and TV, with the existing `Movies/` and `TV/` layout."""
+
+    name = "video"
+    categories = ("movie", "tv", "all")
+    extensions = VIDEO_EXTENSIONS
+
+    def is_incidental(self, path: Path) -> bool:
+        return is_incidental_name(path.name)
+
+    def groups(self, entry: Path) -> tuple[CandidateGroup, ...]:
+        files = self.collect_files(entry)
+        if not files:
+            return ()
+        return (CandidateGroup(name=entry.name, files=files, root=entry),)
+
+    def classify(self, group: CandidateGroup) -> Classification | None:
+        return classify(group.name, tuple(path.name for path in group.files))
+
+    def destination(self, classification: Classification, library_root: Path) -> Path:
+        title = safe_component(classification.title or "Unknown")
+        year = classification.details.get("year")
+        season = classification.details.get("season")
+        if classification.kind == Kind.MOVIE.value:
+            leaf = f"{title} ({year})" if isinstance(year, int) else title
+            return library_root / "Movies" / leaf
+        if classification.kind == Kind.TV.value:
+            series = library_root / "TV" / title
+            if isinstance(season, int):
+                return series / f"Season {season:02d}"
+            return series
+        return library_root / "Unresolved" / title
