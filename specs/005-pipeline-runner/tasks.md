@@ -33,6 +33,7 @@
 # verifies: SC-001 — books ingest and rename in one command
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
 uv run --quiet python tests/fixtures/books/make_source.py "$tmp"
 mkdir -p "$tmp/library"
 uv run --quiet trovium-run --profile books --source "$tmp/source" \
@@ -46,6 +47,7 @@ test -f "$tmp/library/Books/Folder Author/Solo Book (2018)/Folder Author - Solo 
 # verifies: SC-002 — movie and TV ingest and rename in one command
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$tmp/source/Movie.Production.2024.1080p" "$tmp/source/Show.Name.S01" "$tmp/library"
 printf x > "$tmp/source/Movie.Production.2024.1080p/Movie.Production.2024.1080p.mkv"
 printf a > "$tmp/source/Show.Name.S01/Show.Name.S01E01.mkv"
@@ -61,6 +63,7 @@ test -f "$tmp/library/TV/Show Name/Season 01/Show Name - S01E01.mkv"
 # verifies: SC-003 — a dry-run changes nothing and skips rename
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$tmp/source/Movie.Production.2024.1080p" "$tmp/library"
 printf x > "$tmp/source/Movie.Production.2024.1080p/Movie.Production.2024.1080p.mkv"
 uv run --quiet trovium-run --source "$tmp/source" --library-root "$tmp/library" \
@@ -74,6 +77,7 @@ test -z "$(find "$tmp/library" -type f -print -quit)"
 # verifies: SC-004 — copy mode places files and skips rename by default
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$tmp/source/Movie.Production.2024.1080p" "$tmp/library"
 printf x > "$tmp/source/Movie.Production.2024.1080p/Movie.Production.2024.1080p.mkv"
 uv run --quiet trovium-run --source "$tmp/source" --library-root "$tmp/library" \
@@ -86,6 +90,7 @@ test -f "$tmp/library/Movies/Movie Production (2024)/Movie.Production.2024.1080p
 # verifies: SC-005 — an unreachable client exits 3 and does not rename
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
 mkdir -p "$tmp/library"
 code=0
 uv run --quiet trovium-run --client-url http://127.0.0.1:9 \
@@ -96,6 +101,7 @@ test -z "$(find "$tmp/library" -type f -print -quit)"
 
 ```accept
 # verifies: SC-006 — the deployed command set includes trovium-run
+export PYTHONDONTWRITEBYTECODE=1
 uv run --quiet pytest -q -p no:cacheprovider \
   tests/integration/deploy/test_install_local.py::test_install_creates_a_private_working_installation
 ```
