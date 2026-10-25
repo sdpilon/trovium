@@ -5,7 +5,7 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha (`v0.1.0`).** Four commands ship today: the
+> **Status: pre-alpha (`v0.1.1`).** Four commands ship today: the
 > **import/ingest** step (`trovium-ingest`), **renaming**
 > (`trovium-rename`), the **pipeline runner** (`trovium-run`), and
 > **server deployment** (`trovium-deploy`), with qBittorrent as the first
@@ -13,7 +13,7 @@ shared database, no hidden state between steps.
 
 ## Install
 
-The current release is `v0.1.0`. On a Linux server, use the release installer
+The current release is `v0.1.1`. On a Linux server, use the release installer
 described in [Install on a server](#install-on-a-server). For macOS, or to
 track the current `main`, install it as a user-scoped tool with
 [`uv`](https://docs.astral.sh/uv/):
@@ -233,7 +233,7 @@ bash install.sh --non-interactive --library-root /srv/media \
   --source /srv/incoming                                     # unattended, disk source
 bash install.sh --non-interactive --library-root /srv/media \
   --client-url http://127.0.0.1:8080                         # unattended, client source
-bash install.sh --version 0.1.0 --non-interactive \
+bash install.sh --version 0.1.1 --non-interactive \
   --library-root /srv/media --source /srv/incoming           # pinned version
 ```
 
@@ -247,8 +247,8 @@ from being piped into the shell as if it were a script.
 From a checkout, for development or an unreleased branch:
 
 ```sh
-uv run python tools/release/build_bundle.py --version 0.1.0 --out dist
-bash install.sh --bundle dist/trovium-0.1.0-linux-x86_64.tar.gz \
+uv run python tools/release/build_bundle.py --version 0.1.1 --out dist
+bash install.sh --bundle dist/trovium-0.1.1-linux-x86_64.tar.gz \
   --non-interactive --library-root /srv/media --source /srv/incoming
 ```
 
