@@ -5,15 +5,18 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha.** Four commands ship today: the **import/ingest** step
-> (`trovium-ingest`), **renaming** (`trovium-rename`), the **pipeline runner**
-> (`trovium-run`), and **server deployment** (`trovium-deploy`), with
-> qBittorrent as the first download client.
+> **Status: pre-alpha (`v0.1.0`).** Four commands ship today: the
+> **import/ingest** step (`trovium-ingest`), **renaming**
+> (`trovium-rename`), the **pipeline runner** (`trovium-run`), and
+> **server deployment** (`trovium-deploy`), with qBittorrent as the first
+> download client.
 
 ## Install
 
-trovium is pre-alpha and has no tagged release yet. Install the current `main`
-as a user-scoped tool with [`uv`](https://docs.astral.sh/uv/):
+The current release is `v0.1.0`. On a Linux server, use the release installer
+described in [Install on a server](#install-on-a-server). For macOS, or to
+track the current `main`, install it as a user-scoped tool with
+[`uv`](https://docs.astral.sh/uv/):
 
 ```sh
 uv tool install --from git+https://github.com/sdpilon/trovium trovium
@@ -219,11 +222,7 @@ shipped pipeline step for the current user, creates a configuration file, runs a
 self-check, and records deployment state. It is user-scoped and does not require
 root.
 
-> **No release has been published yet.** The `releases/latest` URLs below
-> return 404 until the first `v*` tag is pushed. Use the local-bundle path to
-> exercise the deployment now.
-
-Online, once a release exists:
+Online:
 
 ```sh
 curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.sh \
@@ -237,7 +236,7 @@ bash install.sh --version 0.1.0 --non-interactive --library-root /srv/media
 Downloading first and then running `bash install.sh` keeps a failed download
 from being piped into the shell as if it were a script.
 
-From a checkout, which is the path that works today:
+From a checkout, for development or an unreleased branch:
 
 ```sh
 uv run python tools/release/build_bundle.py --version 0.1.0 --out dist
@@ -252,7 +251,7 @@ the self-contained Linux server bundle from the pinned toolchain.
 The bundle installer also writes to `~/.local/bin`. Use it instead of
 `uv tool install` on a server, not alongside it.
 
-After the first release, inspect, upgrade, or remove the installation:
+Inspect, upgrade, or remove the installation:
 
 ```sh
 trovium-deploy status
