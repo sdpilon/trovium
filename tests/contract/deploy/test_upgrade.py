@@ -30,6 +30,7 @@ def test_upgrade_report_fields_and_config_preservation(
         "trovium-deploy",
         "trovium-ingest",
         "trovium-rename",
+        "trovium-run",
     ]
 
 

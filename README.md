@@ -5,10 +5,52 @@ Each pipeline step is an independent, single-purpose command-line tool that
 composes with the others over explicit streams — no all-in-one monolith, no
 shared database, no hidden state between steps.
 
-> **Status: pre-alpha.** Three commands ship today: the **import/ingest** step
-> (`trovium-ingest`), **renaming** (`trovium-rename`), and **server
-> deployment** (`trovium-deploy`), with qBittorrent as the first download
-> client.
+> **Status: pre-alpha.** Four commands ship today: the **import/ingest** step
+> (`trovium-ingest`), **renaming** (`trovium-rename`), the **pipeline runner**
+> (`trovium-run`), and **server deployment** (`trovium-deploy`), with
+> qBittorrent as the first download client.
+
+## Install
+
+trovium is pre-alpha and has no tagged release yet. Install the current `main`
+as a user-scoped tool with [`uv`](https://docs.astral.sh/uv/):
+
+```sh
+uv tool install --from git+https://github.com/sdpilon/trovium trovium
+```
+
+That puts `trovium-ingest`, `trovium-rename`, `trovium-run`, and
+`trovium-deploy` in `~/.local/bin`. Make sure that directory is on your
+`PATH` (`uv tool update-shell` can add it), then verify the install:
+
+```sh
+trovium-run --help
+
+# inspect a first run without changing anything
+trovium-run --source ~/Downloads/incoming --library-root ~/Media --dry-run
+```
+
+Update the installed copy after new commits land:
+
+```sh
+uv tool install --from git+https://github.com/sdpilon/trovium trovium --force
+```
+
+`uv tool install` installs the commands only. `trovium-deploy status` reports
+`not_installed` until you run the managed bundle installer described in
+[Install on a server](#install-on-a-server).
+
+### From a checkout
+
+For development, or to run a branch you are working on:
+
+```sh
+uv sync
+uv run trovium-run --help
+```
+
+The usage examples below use the installed command. Inside a checkout, prefix
+them with `uv run`.
 
 ## Why
 
@@ -37,6 +79,9 @@ The full set of project principles lives in the
 
 ## Usage
 
+The examples assume the commands are installed. From a checkout, prefix each
+one with `uv run`.
+
 ### `trovium-ingest`
 
 The import/ingest step. It takes candidates from either a download client
@@ -52,19 +97,19 @@ becoming a new application; see [`docs/profiles.md`](docs/profiles.md).
 
 ```sh
 # disk source — no download client involved
-uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media
+trovium-ingest --source ~/Downloads/incoming --library-root ~/Media
 
 # ebooks
-uv run trovium-ingest --profile books --source ~/Books/incoming --library-root ~/Media
+trovium-ingest --profile books --source ~/Books/incoming --library-root ~/Media
 
 # inspect what would happen, changing nothing
-uv run trovium-ingest --source ~/Downloads/incoming --library-root ~/Media --dry-run
+trovium-ingest --source ~/Downloads/incoming --library-root ~/Media --dry-run
 
 # qBittorrent source (credentials from the environment only)
 export TROVIUM_CLIENT_URL=http://127.0.0.1:8080
 export TROVIUM_CLIENT_USERNAME=admin
 export TROVIUM_CLIENT_PASSWORD=...
-uv run trovium-ingest --library-root ~/Media
+trovium-ingest --library-root ~/Media
 ```
 
 The command exits `0` when the run completed — per-item problems are recorded,
@@ -117,14 +162,15 @@ dry-runnable and idempotent.
 
 ```sh
 # one pipeline
-uv run trovium-ingest --profile books --source ~/Books/incoming \
-  --library-root ~/Media | uv run trovium-rename
+trovium-ingest \
+    --profile books --source ~/Books/incoming --library-root ~/Media \
+    | trovium-rename
 
 # or inspect the plan first
-uv run trovium-ingest --profile books --source ~/Books/incoming \
-  --library-root ~/Media > ingest.json
-uv run trovium-rename --record ingest.json --dry-run
-uv run trovium-rename --record ingest.json
+trovium-ingest \
+    --profile books --source ~/Books/incoming --library-root ~/Media > ingest.json
+trovium-rename --record ingest.json --dry-run
+trovium-rename --record ingest.json
 ```
 
 Books become `Author - Title (Year).ext` (or
@@ -140,6 +186,31 @@ gone, `--allow-unsafe` permits copy/hardlink and client-relocated items.
 Full contract:
 [`specs/004-profile-rename/contracts/`](specs/004-profile-rename/contracts/).
 
+### `trovium-run`
+
+The configured pipeline. It resolves the same options as ingest, runs ingest,
+then runs rename when the record is move-mode and the run is not a dry-run. It
+emits one combined JSON record with `ingest` and `rename` sections. This is the
+command to put behind cron or a systemd timer.
+
+```sh
+# one command, configured source/profile/library
+trovium-run --config ~/.config/trovium/config.ini
+
+# inspect the whole pipeline without placing or renaming
+trovium-run --config ~/.config/trovium/config.ini --dry-run
+
+# books from an explicit source
+trovium-run --profile books --source ~/Books/incoming --library-root ~/Media
+```
+
+Copy/hardlink runs place files but skip rename by default, because the source
+is still present. `--allow-unsafe` passes the rename override through;
+`--skip-rename` runs ingest only.
+
+Full contract:
+[`specs/005-pipeline-runner/contracts/`](specs/005-pipeline-runner/contracts/).
+
 ## Install on a server
 
 The deployment feature is defined in
@@ -148,23 +219,40 @@ shipped pipeline step for the current user, creates a configuration file, runs a
 self-check, and records deployment state. It is user-scoped and does not require
 root.
 
+> **No release has been published yet.** The `releases/latest` URLs below
+> return 404 until the first `v*` tag is pushed. Use the local-bundle path to
+> exercise the deployment now.
+
+Online, once a release exists:
+
 ```sh
-# Online, interactive
-curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.sh | bash -s --
-
-# Online, unattended
 curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.sh \
-  | bash -s -- --non-interactive --library-root /srv/media
+  -o install.sh
 
-# Offline, local bundle
-bash install.sh --bundle ./trovium-0.1.0-linux-x86_64.tar.gz \
-  --non-interactive --library-root /srv/media
-
-# Pinned version
+bash install.sh                                              # interactive
+bash install.sh --non-interactive --library-root /srv/media  # unattended
 bash install.sh --version 0.1.0 --non-interactive --library-root /srv/media
 ```
 
-Inspect, upgrade, or remove the installation:
+Downloading first and then running `bash install.sh` keeps a failed download
+from being piped into the shell as if it were a script.
+
+From a checkout, which is the path that works today:
+
+```sh
+uv run python tools/release/build_bundle.py --version 0.1.0 --out dist
+bash install.sh --bundle dist/trovium-0.1.0-linux-x86_64.tar.gz \
+  --non-interactive --library-root /srv/media --source /srv/incoming
+```
+
+Pick the bundle matching the host: `linux-x86_64`, `linux-aarch64`, or
+`darwin-aarch64`. The default build uses the host toolchain; `--locked` builds
+the self-contained Linux server bundle from the pinned toolchain.
+
+The bundle installer also writes to `~/.local/bin`. Use it instead of
+`uv tool install` on a server, not alongside it.
+
+After the first release, inspect, upgrade, or remove the installation:
 
 ```sh
 trovium-deploy status
