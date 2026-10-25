@@ -229,9 +229,17 @@ curl -fsSL https://github.com/sdpilon/trovium/releases/latest/download/install.s
   -o install.sh
 
 bash install.sh                                              # interactive
-bash install.sh --non-interactive --library-root /srv/media  # unattended
-bash install.sh --version 0.1.0 --non-interactive --library-root /srv/media
+bash install.sh --non-interactive --library-root /srv/media \
+  --source /srv/incoming                                     # unattended, disk source
+bash install.sh --non-interactive --library-root /srv/media \
+  --client-url http://127.0.0.1:8080                         # unattended, client source
+bash install.sh --version 0.1.0 --non-interactive \
+  --library-root /srv/media --source /srv/incoming           # pinned version
 ```
+
+An unattended install needs one of `--source` or `--client-url`. Without one
+the install succeeds, but the config has no source and `trovium-deploy status`
+reports `degraded`.
 
 Downloading first and then running `bash install.sh` keeps a failed download
 from being piped into the shell as if it were a script.
@@ -256,7 +264,7 @@ Inspect, upgrade, or remove the installation:
 ```sh
 trovium-deploy status
 trovium-deploy check --version 0.2.0  # fast health check; exit 1 when not current
-bash install.sh --version 0.2.0 --non-interactive --library-root /srv/media
+bash install.sh --version 0.2.0 --non-interactive  # upgrades reuse the config
 trovium-deploy uninstall          # keeps config and media
 trovium-deploy uninstall --purge  # also removes config, never media
 ```
