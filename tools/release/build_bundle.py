@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import json
 import platform as platform_module
+import re
 import shutil
 import subprocess
 import sys
@@ -183,7 +184,15 @@ def build_wheel(source: Path, version: str, destination: Path) -> Path:
                 shutil.copy2(source_file, staging / name)
         shutil.copytree(source / "src", staging / "src")
         pyproject = (staging / "pyproject.toml").read_text(encoding="utf-8")
-        pyproject = pyproject.replace('version = "0.1.0"', f'version = "{version}"', 1)
+        pyproject, replaced = re.subn(
+            r'^version = "[^"]+"',
+            f'version = "{version}"',
+            pyproject,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if replaced != 1:
+            raise SystemExit("pyproject.toml has no project version to override")
         (staging / "pyproject.toml").write_text(pyproject, encoding="utf-8")
         run(["uv", "build", "--wheel", "--out-dir", str(destination)], cwd=staging)
     wheels = sorted(destination.glob("trovium-*.whl"))

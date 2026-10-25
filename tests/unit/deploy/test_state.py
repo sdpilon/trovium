@@ -89,9 +89,10 @@ def test_record_rejects_an_empty_command_list(tmp_path: Path) -> None:
 
 def test_atomic_replacement_leaves_no_temporary_file(tmp_path: Path) -> None:
     path = tmp_path / "deployment.json"
-    write_record(_record(), path)
+    record = _record()
+    write_record(record, path)
     first = path.read_bytes()
-    write_record(_record(), path)
+    write_record(record, path)
     assert path.read_bytes() == first
     assert not list(tmp_path.glob(".deployment.json.tmp"))
 

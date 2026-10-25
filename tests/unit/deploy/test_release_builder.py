@@ -94,7 +94,7 @@ def test_build_wheel_stages_the_requested_version(
     (source / "src" / "trovium").mkdir(parents=True)
     (source / "src" / "trovium" / "__init__.py").write_text("", encoding="utf-8")
     (source / "pyproject.toml").write_text(
-        '[project]\nname = "trovium"\nversion = "0.1.0"\n', encoding="utf-8"
+        '[project]\nname = "trovium"\nversion = "0.1.1"\n', encoding="utf-8"
     )
     (source / "README.md").write_text("readme", encoding="utf-8")
     (source / "LICENSE").write_text("license", encoding="utf-8")
@@ -106,14 +106,14 @@ def test_build_wheel_stages_the_requested_version(
     def _fake_run(command: list[str], cwd: Path | None = None) -> None:
         assert cwd is not None
         seen["pyproject"] = (cwd / "pyproject.toml").read_text(encoding="utf-8")
-        (destination / "trovium-0.2.0-py3-none-any.whl").write_bytes(b"wheel")
+        (destination / "trovium-0.1.2-py3-none-any.whl").write_bytes(b"wheel")
 
     monkeypatch.setattr(builder, "run", _fake_run)
-    wheel = builder.build_wheel(source, "0.2.0", destination)
+    wheel = builder.build_wheel(source, "0.1.2", destination)
 
-    assert wheel.name == "trovium-0.2.0-py3-none-any.whl"
-    assert 'version = "0.2.0"' in seen["pyproject"]
-    assert 'version = "0.1.0"' not in seen["pyproject"]
+    assert wheel.name == "trovium-0.1.2-py3-none-any.whl"
+    assert 'version = "0.1.2"' in seen["pyproject"]
+    assert 'version = "0.1.1"' not in seen["pyproject"]
 
 
 def test_locked_licenses_are_written_into_the_bundle(
