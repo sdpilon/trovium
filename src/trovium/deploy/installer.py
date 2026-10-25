@@ -181,6 +181,21 @@ def _report_status(checks: list[Check]) -> ReportStatus:
     return status_for(checks)
 
 
+def _path_remedy(bin_dir: Path) -> str:
+    return f'Add `export PATH="{bin_dir}:$PATH"` to your shell profile.'
+
+
+def _first_warning_remedy(checks: list[Check]) -> str | None:
+    return next(
+        (
+            check.remedy
+            for check in checks
+            if check.status is CheckStatus.WARN and check.remedy is not None
+        ),
+        None,
+    )
+
+
 def _resolve_install_config(
     opts: InstallOptions,
 ) -> tuple[TroviumConfig, list[str], list[Action]]:
@@ -842,13 +857,12 @@ def _install(opts: InstallOptions, report: Report) -> Report:
         report.bin_dir = str(bin_dir)
         report.commands = list(info.wheel.commands)
         if not paths.path_contains(bin_dir):
-            remedy = f'Add `export PATH="{bin_dir}:$PATH"` to your shell profile.'
             report.checks.append(
                 Check(
                     name="command_path",
                     status=CheckStatus.WARN,
                     detail=f"{bin_dir} is not on PATH",
-                    remedy=remedy,
+                    remedy=_path_remedy(bin_dir),
                 )
             )
         report.checks.append(
@@ -874,6 +888,9 @@ def _install(opts: InstallOptions, report: Report) -> Report:
                 )
             )
         report.status = _report_status(report.checks)
+        warning_remedy = _first_warning_remedy(report.checks)
+        if warning_remedy is not None:
+            report.next_steps.append(warning_remedy)
         report.next_steps.extend(
             [
                 "Run trovium-deploy status to verify the installation.",
@@ -1013,18 +1030,22 @@ def status(config_override: Path | None = None) -> Report:
             )
         )
     if not paths.path_contains(Path(record.bin_dir)):
-        remedy = f'Add `export PATH="{record.bin_dir}:$PATH"` to your shell profile.'
         report.checks.append(
             Check(
                 name="command_path",
                 status=CheckStatus.WARN,
                 detail=f"{record.bin_dir} is not on PATH",
-                remedy=remedy,
+                remedy=_path_remedy(Path(record.bin_dir)),
             )
         )
     report.status = _report_status(report.checks)
     if report.status is ReportStatus.DEGRADED:
-        report.next_steps.append("Review the warnings above and rerun status.")
+        warning_remedy = _first_warning_remedy(report.checks)
+        report.next_steps.append(
+            warning_remedy
+            if warning_remedy is not None
+            else "Review the warnings above and rerun status."
+        )
     return report.finish()
 
 

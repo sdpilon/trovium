@@ -342,3 +342,20 @@ def test_installation_is_user_scoped_and_reports_the_path_remedy(
     assert path_check["status"] == "warn"
     assert str(layout.bin) in path_check["remedy"]
     assert "shell profile" in path_check["remedy"]
+    assert str(layout.bin) in payload["next_steps"][0]
+    assert "export PATH" in payload["next_steps"][0]
+
+
+def test_unattended_install_without_a_source_names_the_gap(
+    layout: Layout, bundle: Path
+) -> None:
+    completed = install(layout, bundle, ["--library-root", str(layout.library)])
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert payload["status"] == "degraded"
+    source_check = next(
+        check for check in payload["checks"] if check["name"] == "source_configured"
+    )
+    assert source_check["status"] == "warn"
+    assert payload["next_steps"][0] == source_check["remedy"]
