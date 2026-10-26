@@ -9,11 +9,35 @@
 //
 // Exit code is non-zero if any case does not match.
 
-import { existsSync } from "node:fs"
-import { evaluateAction, gatePath, resolveBash, type Effect } from "./gates"
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { evaluateAction, gatePath, HOOKS_REL, resolveBash, type Effect } from "./gates"
 
 const root = process.cwd()
 const bash = resolveBash()
+
+function makeLocalRuleSandbox(projectRoot: string): string {
+  const sandbox = mkdtempSync(join(tmpdir(), "trovium-adapter-local-"))
+  cpSync(join(projectRoot, HOOKS_REL), join(sandbox, HOOKS_REL), { recursive: true })
+  cpSync(join(projectRoot, ".specify", "gates"), join(sandbox, ".specify", "gates"), {
+    recursive: true,
+  })
+  const rules = join(sandbox, ".specify", "gates", "hooks.local.d", "validate-bash")
+  mkdirSync(rules, { recursive: true })
+  writeFileSync(
+    join(rules, "10-canary.sh"),
+    'if grep -q gates-local-canary; then echo "canary rule refused" >&2; exit 1; fi\n',
+  )
+  return sandbox
+}
 
 interface Case {
   name: string
@@ -26,6 +50,24 @@ interface Case {
   root?: string
 }
 
+const localRuleRoot = existsSync(gatePath(root, "validate-bash.sh"))
+  ? makeLocalRuleSandbox(root)
+  : undefined
+if (localRuleRoot) {
+  const sandbox = localRuleRoot
+  process.on("exit", () => rmSync(sandbox, { recursive: true, force: true }))
+}
+
+const localRuleCase: Case | undefined = localRuleRoot
+  ? {
+      name: "shell local rule",
+      action: "shell",
+      resources: ["echo gates-local-canary"],
+      expect: "block",
+      root: localRuleRoot,
+    }
+  : undefined
+
 const cases: Case[] = [
   // --- edit / write / patch -> protect-files.sh -----------------------------
   { name: "edit .env", action: "edit", resources: [".env"], expect: "block" },
@@ -37,6 +79,7 @@ const cases: Case[] = [
   { name: "shell git push --force", action: "shell", resources: ["git push --force origin main"], expect: "block" },
   { name: "shell git push --delete", action: "shell", resources: ["git push origin --delete feature"], expect: "ask" },
   { name: "shell git add -A (bulk staging)", action: "shell", resources: ["git add -A"], expect: "block" },
+  ...(localRuleCase ? [localRuleCase] : []),
   { name: "shell git add <path> (explicit)", action: "shell", resources: ["git add src/trovium/ingest.py"], expect: "allow" },
   { name: "shell commit --no-verify", action: "shell",
     resources: ["git commit --no-verify -m x"], expect: "ask" },
