@@ -10,6 +10,7 @@ hash scope pinned in ``specs/001-ingest-vertical-slice/data-model.md``.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -40,7 +41,12 @@ class ExistingItem:
     detail: str | None = None
 
 
-def compare_existing(destination: Path, files: tuple[Path, ...]) -> ExistingItem:
+def compare_existing(
+    destination: Path,
+    files: tuple[Path, ...],
+    *,
+    planned: Mapping[Path, Path] | None = None,
+) -> ExistingItem:
     """Compare candidate files with the destination, never overwriting blindly.
 
     Identity by (profile, kind, title, fields, file-name set) is the profile's
@@ -48,6 +54,10 @@ def compare_existing(destination: Path, files: tuple[Path, ...]) -> ExistingItem
     destination: size equality first, BLAKE2b only when sizes match. A single
     missing target means the item is new (``NONE``); a single present target
     with different content means ``COLLISION`` regardless of file order.
+
+    ``planned`` maps a target path to the source another item in the same
+    dry-run would place there. It lets a later candidate see an earlier
+    candidate's planned placement without touching the filesystem.
     """
     if not files:
         return ExistingItem(sameness=Sameness.NONE)
@@ -55,16 +65,19 @@ def compare_existing(destination: Path, files: tuple[Path, ...]) -> ExistingItem
     any_missing = False
     for source in files:
         target = destination / source.name
-        if not target.exists():
+        planned_source = None if planned is None else planned.get(target)
+        if not target.exists() and planned_source is None:
             any_missing = True
             continue
+        existing = target if target.exists() else planned_source
+        assert existing is not None
         try:
-            if target.stat().st_size != source.stat().st_size:
+            if existing.stat().st_size != source.stat().st_size:
                 return ExistingItem(
                     sameness=Sameness.COLLISION,
                     detail=f"same name, different content: {target}",
                 )
-            if file_digest(target) != file_digest(source):
+            if file_digest(existing) != file_digest(source):
                 return ExistingItem(
                     sameness=Sameness.COLLISION,
                     detail=f"same name, different content: {target}",
