@@ -45,6 +45,22 @@ def test_filename_series_and_index() -> None:
     assert parsed.year == 2021
 
 
+def test_filename_author_title_year_with_release_tag() -> None:
+    parsed = parse_book_name("Jane Doe - The Great Book (2020) [retail]")
+    assert parsed is not None
+    assert parsed.author == "Jane Doe"
+    assert parsed.title == "The Great Book"
+    assert parsed.year == 2020
+
+
+def test_filename_bare_dash_is_unresolvable() -> None:
+    assert parse_book_name("Sample Title - Sample Author") is None
+
+
+def test_filename_numeric_prefix_is_unresolvable() -> None:
+    assert parse_book_name("01 - Sample Title") is None
+
+
 def test_filename_year_only_leaves_author_unknown() -> None:
     parsed = parse_book_name("The Great Book (2020)")
     assert parsed is not None
