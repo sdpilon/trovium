@@ -351,7 +351,9 @@ if [ "$MODE" = "install" ] && [ -z "$BUNDLE" ] && [ "$CONFIG_ARGS" = "0" ]; then
         VERSION="$(download_text "$RELEASE_BASE/latest/download/VERSION" | tr -d '[:space:]' || true)"
     fi
     if [ -n "$VERSION" ]; then
-        check_current_install "$VERSION"
+        # A missing or stale install is a normal predicate result, not an
+        # installer error; the ERR trap must not fire on this return.
+        check_current_install "$VERSION" || true
     fi
 fi
 

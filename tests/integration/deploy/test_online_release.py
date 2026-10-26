@@ -101,6 +101,60 @@ def test_bootstrap_uninstall_resolves_latest_without_an_installed_command(
     assert payload["status"] == "noop"
 
 
+def test_fresh_install_without_mode_flags_passes_the_early_check(
+    layout: Layout, bundle: Path
+) -> None:
+    with release_server(bundle, "0.1.0") as (base_url, _root):
+        completed = run(
+            layout,
+            [
+                "bash",
+                "install.sh",
+                "--release-base-url",
+                base_url,
+                "--version",
+                "0.1.0",
+                "--json",
+                "compact",
+            ],
+            env={
+                "TROVIUM_LIBRARY_ROOT": str(layout.library),
+                "TROVIUM_SOURCE": str(layout.source),
+            },
+        )
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert payload["version"] == "0.1.0"
+    assert (layout.bin / "trovium-ingest").is_file()
+
+
+def test_upgrade_without_mode_flags_passes_the_early_check(
+    layout: Layout, bundle: Path, newer_bundle: Path
+) -> None:
+    first = install(layout, bundle, _standard(layout))
+    assert first.returncode == 0, report(first)
+
+    with release_server(newer_bundle, "0.2.0") as (base_url, _root):
+        completed = run(
+            layout,
+            [
+                "bash",
+                "install.sh",
+                "--release-base-url",
+                base_url,
+                "--version",
+                "0.2.0",
+                "--json",
+                "compact",
+            ],
+        )
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    assert payload["version"] == "0.2.0"
+
+
 def test_online_reinstall_uses_the_installed_check_fast_path(
     layout: Layout, bundle: Path
 ) -> None:

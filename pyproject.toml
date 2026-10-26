@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trovium"
-version = "0.1.1"
+version = "0.1.2"
 description = "Unix-philosophy replacements for the *arr media-automation stack; each pipeline step is an independent tool."
 readme = "README.md"
 requires-python = ">=3.13"
