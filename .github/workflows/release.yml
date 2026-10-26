@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.0
-      - uses: actions/setup-node@v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "26"
       - name: Install gate tooling
@@ -34,11 +34,11 @@ jobs:
           else
             sudo apt-get install -y -q shellcheck
           fi
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install -g prettier markdownlint-cli2
+          if [ ! -f package-lock.json ]; then
+            echo "package-lock.json is required for pinned linters" >&2
+            exit 1
           fi
+          npm ci
       - name: Sync the Python environment
         run: uv sync --frozen
       - name: Run canonical quality gates
@@ -59,10 +59,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Install bundle tooling
         run: |
           sudo apt-get update -q
@@ -79,7 +79,7 @@ jobs:
         run: |
           cp install.sh dist/install.sh
           sha256sum dist/install.sh > dist/install.sh.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: trovium-${{ matrix.platform }}
           path: dist/
@@ -90,7 +90,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
