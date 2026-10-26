@@ -9,6 +9,18 @@
 **Input**: Issue #42, split from #41. The parser defect is fixed separately;
 this spec covers two behavior decisions for the books profile.
 
+## Clarifications
+
+### Session 2026-10-26
+
+- Q: Should `N - Title` be treated as a series index? → A: Yes: an integer
+  1–999, optional trailing year; the record author is null and the destination
+  uses `Unknown`.
+- Q: Which `metadata_source` value should a sibling EPUB use? → A:
+  `epub+sibling` (with `+filename` when the filename fills a missing field).
+- Q: Does a file's own metadata beat a sibling EPUB? → A: Yes; embedded
+  metadata or its own `metadata.opf` wins.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Numbered series files (Priority: P1)
@@ -32,6 +44,8 @@ and verify the record details and destination.
    the title is `Another Title`, the year is `2021`, and the author is unknown.
 3. **Given** `2020 - A Title.azw3`, **Then** the leading four-digit year is not
    treated as a series index and the name stays `unresolvable`.
+4. **Given** `1000 - A Title.azw3`, **Then** the integer is outside 1–999, so it
+   is not a series index and the name stays `unresolvable`.
 
 ---
 
@@ -65,22 +79,27 @@ their destination.
 ### Functional Requirements
 
 - **FR-001**: The filename grammar MUST recognize `N - Title` and `N. Title`
-  as a series-index form when `N` is an integer from 1 to 999.
+  as a series-index form when `N` is an integer from 1 to 999. This form is
+  always a series index; it is not rejected for lacking a series name. An
+  integer outside 1–999 falls through to the other documented forms.
 - **FR-002**: That form MUST set `series_index`, leave `series` and `author`
   null unless the filename supplies them, and accept an optional trailing
   `(Year)`.
 - **FR-003**: A missing author MUST use the existing `Unknown` destination
   segment: `Books/Unknown/<Title> (Year)/`.
-- **FR-004**: For a non-EPUB candidate without its own `metadata.opf`, the
-  profile MUST use a same-stem sibling EPUB's metadata when exactly one such
-  EPUB exists.
-- **FR-005**: The record MUST name the sibling EPUB as the metadata source,
-  extending the documented `metadata_source` values.
+- **FR-004**: For a non-EPUB candidate without its own embedded metadata or
+  `metadata.opf`, the profile MUST use a same-stem sibling EPUB's metadata when
+  exactly one such EPUB exists.
+- **FR-005**: The record MUST name the sibling EPUB as the metadata source with
+  `metadata_source: "epub+sibling"`; when the filename also supplies a missing
+  field, use `"epub+sibling+filename"`.
 - **FR-006**: Ambiguous sibling pairing MUST produce `unresolvable` (or a named
   per-item error), never a silent guess.
 - **FR-007**: Existing documented filename forms, the #41 ambiguous-name
   behavior, and EPUB/OPF precedence MUST remain unchanged.
 - **FR-008**: The change MUST NOT add a runtime dependency.
+- **FR-009**: A candidate's own embedded metadata or same-folder `metadata.opf`
+  MUST take precedence over a sibling EPUB.
 
 ### Key Entities
 
@@ -90,8 +109,9 @@ their destination.
 - **Sibling format**: Two book files in one folder with the same filename stem
   and different extensions, at least one of which is an EPUB with metadata.
 - **Metadata source**: The record field that says which input supplied the
-  title, author, year, and series fields; the sibling EPUB case needs a new
-  documented value.
+  title, author, year, and series fields. The sibling EPUB case uses
+  `epub+sibling`, or `epub+sibling+filename` when the filename fills a missing
+  field.
 
 ## Success Criteria _(mandatory)_
 
@@ -101,7 +121,8 @@ their destination.
   `Books/Sample Author/Sample Title (2020)/`.
 - **SC-003**: Ambiguous sibling pairing is `unresolvable` with a readable
   reason and does not place either format by guess.
-- **SC-004**: The record names the metadata source for both formats.
+- **SC-004**: The record names the metadata source for both formats, using
+  `epub+sibling` for the AZW3.
 - **SC-005**: Existing books, video, and rename tests remain green.
 
 ## Out of Scope
@@ -119,12 +140,4 @@ their destination.
 - Formats of one book share the same filename stem; a different stem is not
   paired automatically.
 - A same-folder `metadata.opf` stays authoritative for its file.
-
-## Open Questions
-
-- Should `N - Title` always be a series index, or stay `unresolvable` when no
-  series name is available?
-- Should the sibling source be a new `epub+sibling` value, or reuse the
-  existing `epub+filename` label?
-- Should a sibling EPUB be ignored when the non-EPUB file has its own embedded
-  metadata? (Recommendation: own metadata wins.)
+- A file's own embedded metadata or `metadata.opf` wins over a sibling EPUB.
