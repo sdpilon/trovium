@@ -68,15 +68,17 @@ ASK   shell ["GATES_SKIP=1 echo gates-poc-live-ask-ok"]  :: gates: this command 
 - The **ASK** line: a `GATES_SKIP=1 …` command raised an ask; on approval the
   command ran.
 
-Run the offline proof (11 cases) from the project root:
+Run the offline proof (14 cases) from the project root:
 
 ```sh
 bun .opencode/plugins/gates/prove.ts
 ```
 
 It covers `.env`/`credentials.json` blocks, `rm -rf /` and `git push --force`
-blocks, `git push --delete` / `git commit --no-verify` asks, allows, the
-bash-3.2 regression, and the not-projected-inert case.
+blocks, `git push --delete` / `git commit --no-verify` asks, allows, a
+`hooks.local.d` rule, the bash-3.2 regression, and the not-projected-inert
+case. The local-rule case runs in a temporary copy of the projected hooks, so
+it never touches the checkout's own `hooks.local.d`.
 
 ## Bug found: `validate-bash.sh` is defeated on macOS's default bash (3.2)
 
@@ -116,6 +118,17 @@ goal, so this is an upstream bug worth reporting.
 `PATH` (or `$GATES_BASH` / Homebrew paths) so the scripts run on a healthy
 interpreter. If only bash 3.2 is available, the broken hook surfaces as an
 **ask** rather than a silent allow.
+
+## Canary status on macOS
+
+`bash .specify/gates/canary.sh --only bash,bulk,local` still reports three
+accepted canaries on a stock macOS host. That is the bug above, measured
+through the Claude projection: the canary runs the projected hook by path, so
+its `#!/bin/bash` selects 3.2. The live OpenCode boundary is not affected:
+`resolveBash()` selects a bash >= 4, and `prove.ts` shows the same `rm -rf /`,
+`git add -A`, and `hooks.local.d` probes blocking through the adapter. The
+canary suite remains the signal for the Claude projection; the proof harness is
+the signal for this adapter.
 
 ## The real conversion gaps
 
