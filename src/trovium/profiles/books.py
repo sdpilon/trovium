@@ -44,7 +44,9 @@ _PARENTHETICAL = re.compile(
     r"^(?P<title>.+?)\s+\((?P<parenthetical>[^()]+)\)"
     r"(?:\s+\((?P<year>(?:19|20)\d{2})\))?$"
 )
-_AUTHOR_TITLE = re.compile(r"^(?P<author>.+?)\s+-\s+(?P<title>.+)$")
+_AUTHOR_TITLE = re.compile(
+    r"^(?P<author>.+?)\s+-\s+(?P<title>.+?)\s+\((?P<year>(?:19|20)\d{2})\)$"
+)
 _TRAILING_YEAR = re.compile(r"^(?P<base>.+?)\s+\((?P<year>(?:19|20)\d{2})\)$")
 
 
@@ -114,11 +116,14 @@ def parse_book_name(name: str) -> BookName | None:
 
     author_title = _AUTHOR_TITLE.match(cleaned)
     if author_title is not None:
-        title_text, year = _split_year(author_title.group("title"))
-        title = _clean(title_text)
+        title = _clean(author_title.group("title"))
         author = _clean(author_title.group("author"))
         if title:
-            return BookName(title=title, author=author, year=year)
+            return BookName(
+                title=title,
+                author=author,
+                year=int(author_title.group("year")),
+            )
 
     parenthetical = _PARENTHETICAL.match(cleaned)
     if parenthetical is not None:

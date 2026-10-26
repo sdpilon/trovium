@@ -49,6 +49,37 @@ def test_compare_existing_collision_on_equal_size_different_bytes(
     assert compare_existing(destination, (source,)).sameness is Sameness.COLLISION
 
 
+def test_compare_existing_uses_a_planned_identical_target(tmp_path: Path) -> None:
+    destination = tmp_path / "dest"
+    planned_source = tmp_path / "planned.mkv"
+    planned_source.write_bytes(b"abc")
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"abc")
+
+    result = compare_existing(
+        destination, (source,), planned={destination / source.name: planned_source}
+    )
+
+    assert result.sameness is Sameness.IDENTICAL
+
+
+def test_compare_existing_detects_collision_with_a_planned_target(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "dest"
+    planned_source = tmp_path / "planned.mkv"
+    planned_source.write_bytes(b"xyz")
+    source = tmp_path / "source.mkv"
+    source.write_bytes(b"abc")
+
+    result = compare_existing(
+        destination, (source,), planned={destination / source.name: planned_source}
+    )
+
+    assert result.sameness is Sameness.COLLISION
+    assert result.detail is not None
+
+
 @pytest.mark.parametrize("order", ["first-missing", "second-missing"])
 def test_compare_existing_detects_collision_in_partial_overlap(
     tmp_path: Path, order: str

@@ -112,6 +112,45 @@ def test_dry_run_exposes_dedup_removal_and_matches_the_real_run(
     assert not (release / "Movie.Production.2024.1080p-iGor.mkv").exists()
 
 
+def test_dry_run_matches_the_real_run_for_identical_duplicates(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "source"
+    (source / "a").mkdir(parents=True)
+    (source / "b").mkdir()
+    library = tmp_path / "library"
+    library.mkdir()
+    name = "Jane Doe - The Great Book (2020).pdf"
+    for folder in ("a", "b"):
+        (source / folder / name).write_bytes(b"identical payload\n")
+
+    args = [
+        "--profile",
+        "books",
+        "--source",
+        str(source),
+        "--library-root",
+        str(library),
+        "--mode",
+        "move",
+        "--json",
+        "compact",
+    ]
+    assert cli.main([*args, "--dry-run"]) == 0
+    planned = json.loads(capsys.readouterr().out)
+    assert cli.main(args) == 0
+    executed = json.loads(capsys.readouterr().out)
+
+    assert planned["counts"] == executed["counts"]
+    assert planned["counts"]["ingested"] == 1
+    assert planned["counts"]["already_handled"] == 1
+    for planned_item, executed_item in zip(
+        planned["items"], executed["items"], strict=True
+    ):
+        assert planned_item["disposition"] == executed_item["disposition"]
+        assert planned_item["actions"] == executed_item["actions"]
+
+
 def test_dry_run_over_already_handled_item_writes_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
