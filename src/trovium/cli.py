@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -275,6 +275,7 @@ def process(
     *,
     profile: Profile,
     guard: Callable[[Candidate, Classification], str | None] | None = None,
+    planned: Mapping[Path, Path] | None = None,
 ) -> ItemRecord:
     """Classify and (unless dry-run) place one candidate.
 
@@ -323,7 +324,7 @@ def process(
     refusal = guard(candidate, classification) if guard is not None else None
 
     destination = profile.destination(classification, library_root)
-    existing = compare_existing(destination, candidate.files)
+    existing = compare_existing(destination, candidate.files, planned=planned)
     plan = plan_placement(declared.mode, candidate.files, destination, existing)
     if refusal is not None:
         if plan.disposition is Disposition.INGESTED:
@@ -359,6 +360,14 @@ def process(
     )
 
 
+def _record_planned_placement(planned: dict[Path, Path], record: ItemRecord) -> None:
+    """Remember a dry-run placement so later candidates can see it."""
+    if record.disposition is not Disposition.INGESTED:
+        return
+    for action in record.actions:
+        planned[Path(action.destination)] = Path(action.source)
+
+
 def run_disk(
     source: Path,
     library_root: Path,
@@ -371,9 +380,19 @@ def run_disk(
     summary = RunSummary(
         source=Source.DISK, dry_run=dry_run, declared=declared, items=[]
     )
+    planned: dict[Path, Path] = {}
     for candidate in candidates:
-        record = process(candidate, library_root, declared, dry_run, profile=profile)
+        record = process(
+            candidate,
+            library_root,
+            declared,
+            dry_run,
+            profile=profile,
+            planned=planned if dry_run else None,
+        )
         summary.items.append(record)
+        if dry_run:
+            _record_planned_placement(planned, record)
         if record.disposition is Disposition.ERROR and declared.on_fail is OnFail.STOP:
             break
     return summary
@@ -473,6 +492,7 @@ def run_client(
     summary = RunSummary(
         source=Source.CLIENT, dry_run=dry_run, declared=declared, items=[]
     )
+    planned: dict[Path, Path] = {}
     for candidate in candidates:
         if candidate.completion is CompletionState.INCOMPLETE:
             summary.items.append(
@@ -492,7 +512,10 @@ def run_client(
             dry_run,
             profile=profile,
             guard=_client_move_guard(declared),
+            planned=planned if dry_run else None,
         )
+        if dry_run:
+            _record_planned_placement(planned, record)
         torrent_hash = candidate.client_hash
         assert torrent_hash is not None  # client candidates always carry hash
 

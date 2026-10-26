@@ -108,6 +108,42 @@ def test_second_run_is_already_handled(tmp_path: Path) -> None:
     assert second.items[0].actions == []
 
 
+def test_dry_run_shared_destination_matches_the_real_run(tmp_path: Path) -> None:
+    destination = tmp_path / "book"
+    destination.mkdir()
+    (destination / "old.azw3").write_bytes(b"azw3")
+    (destination / "old.mobi").write_bytes(b"mobi")
+    payload = _record(
+        [
+            _item(
+                destination,
+                name="one",
+                details={"author": "Jane Doe", "year": 2020},
+            ),
+            _item(
+                destination,
+                name="two",
+                details={"author": "Jane Doe", "year": 2020},
+            ),
+        ]
+    )
+    profile = get_profile("books")
+
+    dry = rename.rename_items(
+        payload, profile, dry_run=True, allow_unsafe=False, on_fail=OnFail.CONTINUE
+    )
+    real = rename.rename_items(
+        payload, profile, dry_run=False, allow_unsafe=False, on_fail=OnFail.CONTINUE
+    )
+
+    assert dry.items[0].disposition is rename.RenameDisposition.RENAMED
+    assert dry.items[1].disposition is rename.RenameDisposition.ALREADY_HANDLED
+    assert real.items[0].disposition is rename.RenameDisposition.RENAMED
+    assert real.items[1].disposition is rename.RenameDisposition.ALREADY_HANDLED
+    assert dry.items[0].actions == real.items[0].actions
+    assert dry.items[1].actions == real.items[1].actions == []
+
+
 def test_collision_is_an_error_and_leaves_both_files(tmp_path: Path) -> None:
     destination = tmp_path / "book"
     source = _book(destination)

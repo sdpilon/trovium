@@ -200,8 +200,32 @@ def _client_relocated(item: dict[str, Any]) -> bool:
     )
 
 
+def _directory_state(directory: Path) -> dict[str, Path] | None:
+    """Snapshot a destination for a dry run; None when it cannot be listed."""
+    try:
+        return {
+            path.name: path for path in sorted(directory.iterdir()) if path.is_file()
+        }
+    except OSError:
+        return None
+
+
+def _advance_state(state: dict[str, Path], item: RenameItem) -> None:
+    """Apply a planned rename to the dry-run directory snapshot."""
+    for action in item.actions:
+        source = Path(action.source)
+        target = Path(action.destination)
+        real = state.pop(source.name, None)
+        if real is not None:
+            state[target.name] = real
+
+
 def _plan_item(
-    item: dict[str, Any], profile: Profile, *, allow_unsafe: bool
+    item: dict[str, Any],
+    profile: Profile,
+    *,
+    allow_unsafe: bool,
+    state: dict[str, Path] | None = None,
 ) -> RenameItem:
     name = str(item.get("name") or "item")
     kind = item.get("kind")
@@ -241,14 +265,24 @@ def _plan_item(
         return result(
             RenameDisposition.ERROR, f"destination is not a directory: {directory}"
         )
-    try:
-        files = tuple(sorted(path for path in directory.iterdir() if path.is_file()))
-    except OSError as error:
-        return result(RenameDisposition.ERROR, f"cannot list {directory}: {error}")
+    if state is None:
+        try:
+            files = tuple(
+                sorted(path for path in directory.iterdir() if path.is_file())
+            )
+        except OSError as error:
+            return result(RenameDisposition.ERROR, f"cannot list {directory}: {error}")
+        real_sources: dict[str, Path] = {}
+    else:
+        files = tuple(directory / name for name in sorted(state))
+        real_sources = state
     if not files:
         return result(
             RenameDisposition.SKIPPED, f"destination has no files: {directory}"
         )
+
+    def real_source(path: Path) -> Path:
+        return real_sources.get(path.name, path) if state is not None else path
 
     classification = Classification(
         profile=profile.name, kind=kind, title=title, details=detail_map
@@ -285,18 +319,22 @@ def _plan_item(
         target = directory / plan.name
         if target == plan.source:
             continue
-        if target.exists():
-            if not plan.source.exists():
+        target_exists = (
+            target.name in real_sources if state is not None else target.exists()
+        )
+        if target_exists:
+            if not real_source(plan.source).exists():
                 continue
             return result(
                 RenameDisposition.ERROR, f"target already exists: {plan.name}"
             )
-        if not plan.source.exists():
+        source_path = real_source(plan.source)
+        if not source_path.exists():
             return result(
                 RenameDisposition.ERROR, f"source missing: {plan.source.name}"
             )
         try:
-            size = plan.source.stat().st_size
+            size = source_path.stat().st_size
         except OSError as error:
             return result(
                 RenameDisposition.ERROR, f"cannot read {plan.source.name}: {error}"
@@ -353,7 +391,19 @@ def rename_items(
 ) -> RenameSummary:
     """Plan (and unless dry-run, apply) every item in the record."""
     items: list[RenameItem] = []
+    states: dict[Path, dict[str, Path]] = {}
     for index, raw in enumerate(payload["items"]):
+        state: dict[str, Path] | None = None
+        if dry_run and isinstance(raw, dict):
+            destination = raw.get("destination")
+            if isinstance(destination, str) and destination:
+                directory = Path(destination)
+                if directory.is_dir():
+                    state = states.get(directory)
+                    if state is None:
+                        state = _directory_state(directory)
+                        if state is not None:
+                            states[directory] = state
         if not isinstance(raw, dict):
             item = RenameItem(
                 name=f"item {index + 1}",
@@ -361,8 +411,11 @@ def rename_items(
                 reason="record item is not an object",
             )
         else:
-            item = _plan_item(raw, profile, allow_unsafe=allow_unsafe)
-            if not dry_run and item.disposition is RenameDisposition.RENAMED:
+            item = _plan_item(raw, profile, allow_unsafe=allow_unsafe, state=state)
+            if dry_run:
+                if state is not None and item.disposition is RenameDisposition.RENAMED:
+                    _advance_state(state, item)
+            elif item.disposition is RenameDisposition.RENAMED:
                 _apply(item)
         items.append(item)
         if item.disposition is RenameDisposition.ERROR and on_fail is OnFail.STOP:
