@@ -16,6 +16,7 @@ from trovium.profiles.base import (
     Classification,
     NamePlan,
     Profile,
+    Unresolved,
     safe_component,
 )
 from trovium.profiles.epub import EpubMetadata, read_epub_metadata, read_opf_file
@@ -33,6 +34,7 @@ BOOK_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 _BRACKETED = re.compile(r"\[[^\]]*\]")
+_SERIES_INDEX = re.compile(r"^(?P<index>\d+)(?:\s+-\s+|\.\s+)(?P<title>.+)$")
 _SERIES = re.compile(
     r"^(?P<author>.+?)\s+-\s+(?P<series>.+?)\s+#\s*"
     r"(?P<index>\d+(?:\.\d+)?)\s+-\s+(?P<title>.+)$"
@@ -87,6 +89,16 @@ def parse_book_name(name: str) -> BookName | None:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if not cleaned:
         return None
+
+    series_index_match = _SERIES_INDEX.match(cleaned)
+    if series_index_match is not None:
+        index = int(series_index_match.group("index"))
+        if 1 <= index <= 999:
+            title_text, year = _split_year(series_index_match.group("title"))
+            title = _clean(title_text)
+            if title is None:
+                return None
+            return BookName(title=title, year=year, series_index=index)
 
     series_match = _SERIES.match(cleaned)
     if series_match is not None:
@@ -152,6 +164,22 @@ def _is_sidecar(path: Path) -> bool:
     )
 
 
+def _sibling_epubs(primary: Path) -> tuple[Path, ...]:
+    """Same-stem EPUB files in the primary's folder, readable or not."""
+    try:
+        return tuple(
+            sorted(
+                path
+                for path in primary.parent.iterdir()
+                if path.is_file()
+                and path.suffix.lower() == ".epub"
+                and path.stem == primary.stem
+            )
+        )
+    except OSError:
+        return ()
+
+
 def _format_index(value: object) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -201,7 +229,7 @@ class BooksProfile(Profile):
         except OSError:
             return ()
 
-    def classify(self, group: CandidateGroup) -> Classification | None:
+    def classify(self, group: CandidateGroup) -> Classification | Unresolved | None:
         if not group.files:
             return None
         primary = group.files[0]
@@ -216,8 +244,26 @@ class BooksProfile(Profile):
             if sidecar_path.is_file():
                 sidecar = read_opf_file(sidecar_path)
 
-        metadata = embedded or sidecar
-        metadata_label = "epub" if embedded is not None else ("opf" if sidecar else "")
+        sibling: EpubMetadata | None = None
+        if embedded is None and sidecar is None and primary.suffix.lower() != ".epub":
+            siblings = _sibling_epubs(primary)
+            if len(siblings) > 1:
+                names = ", ".join(path.name for path in siblings)
+                return Unresolved(
+                    f"ambiguous sibling EPUB metadata for {primary.name}: {names}"
+                )
+            if siblings:
+                sibling = read_epub_metadata(siblings[0])
+
+        metadata = embedded or sidecar or sibling
+        if embedded is not None:
+            metadata_label = "epub"
+        elif sidecar is not None:
+            metadata_label = "opf"
+        elif sibling is not None:
+            metadata_label = "epub+sibling"
+        else:
+            metadata_label = ""
         used_metadata = False
         used_filename = False
 
@@ -312,4 +358,6 @@ class BooksProfile(Profile):
         if series is not None and index is not None:
             series_part = f"{safe_component(str(series))} #{_format_index(index)}"
             prefix = f"{prefix} - {series_part}" if prefix else series_part
+        elif index is not None:
+            prefix = _format_index(index)
         return f"{prefix} - {title}{year_part}" if prefix else f"{title}{year_part}"

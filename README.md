@@ -145,7 +145,9 @@ and the profile-aware updates in
 
 The `books` profile reads EPUB metadata first, falls back to a Calibre
 `metadata.opf` sidecar, then to a conservative filename grammar
-(`Author - Title (Year)` and a few close variants). Ebooks land under
+(`Author - Title (Year)` and a few close variants, plus a leading
+`N - Title` series index). A non-EPUB file without its own metadata reuses a
+same-stem sibling EPUB's metadata when exactly one exists. Ebooks land under
 `Books/<Author>/<Title> (Year)/`; ambiguous names are reported as
 `unresolvable` rather than guessed. Original filenames are preserved.
 

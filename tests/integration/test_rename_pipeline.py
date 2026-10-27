@@ -155,3 +155,22 @@ def test_copy_mode_record_is_refused(tmp_path: Path) -> None:
         / "Movie Production (2024)"
         / "Movie.Production.2024.1080p.mkv"
     ).exists()
+
+
+def test_numbered_book_ingest_then_rename(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "01 - Sample Title.azw3").write_bytes(b"azw3")
+    library = tmp_path / "library"
+    library.mkdir()
+    ingest = _ingest(source, library, "--profile", "books", "--mode", "move")
+    record_path = _write_record(tmp_path, ingest)
+
+    code, renamed, _ = _run(
+        rename.main, ["--record", str(record_path), "--json", "compact"]
+    )
+
+    assert code == 0
+    assert renamed["counts"]["error"] == 0
+    placed = library / "Books" / "Unknown" / "Sample Title"
+    assert (placed / "1 - Sample Title.azw3").exists()

@@ -70,18 +70,23 @@ works with no engine change.
 
 ## The methods
 
-| Method                              | Required | Responsibility                                 |
-| ----------------------------------- | -------- | ---------------------------------------------- |
-| `is_member(path)`                   | no       | default: suffix in `extensions`                |
-| `is_incidental(path)`               | no       | default: never; override for samples/clutter   |
-| `collect_files(root)`               | no       | default: recursive member files                |
-| `groups(entry)`                     | yes      | split one source entry into candidates         |
-| `classify(group)`                   | yes      | return `Classification` or `None`; never guess |
-| `destination(classification, root)` | yes      | library path beneath `root`                    |
-| `plan_names(classification, files)` | no       | `NamePlan` per file; identity by default       |
+| Method                              | Required | Responsibility                                                |
+| ----------------------------------- | -------- | ------------------------------------------------------------- |
+| `is_member(path)`                   | no       | default: suffix in `extensions`                               |
+| `is_incidental(path)`               | no       | default: never; override for samples/clutter                  |
+| `collect_files(root)`               | no       | default: recursive member files                               |
+| `groups(entry)`                     | yes      | split one source entry into candidates                        |
+| `classify(group)`                   | yes      | return `Classification`, `Unresolved`, or `None`; never guess |
+| `destination(classification, root)` | yes      | library path beneath `root`                                   |
+| `plan_names(classification, files)` | no       | `NamePlan` per file; identity by default                      |
 
 `Classification.details` is emitted as the item's `details` object. Keep the
 keys stable for a profile; downstream steps and users read them.
+
+Return `Unresolved(reason)` when the profile can name the problem but cannot
+classify the candidate (for example, an ambiguous sibling EPUB pairing). The
+engine emits that reason on the `unresolvable` item. Return `None` for the
+generic "name grammar not confidently matched" reason.
 
 ## Naming and rename
 
@@ -110,8 +115,8 @@ naming tests next to its classification tests.
 
 - Read candidate files if the type carries metadata (EPUB is the example), but
   never write, move, or delete during classification.
-- Return `None` for ambiguity. The engine records `unresolvable` and leaves
-  the source untouched.
+- Return `None` or `Unresolved(reason)` for ambiguity. The engine records
+  `unresolvable` and leaves the source untouched.
 - Use `safe_component` for every user-derived path segment.
 - Keep destinations stable; idempotency compares the resolved destination's
   files by name, size, and hash. An unstable layout breaks the no-op rerun.
