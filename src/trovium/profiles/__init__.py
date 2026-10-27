@@ -11,6 +11,7 @@ from trovium.profiles.base import (
     Classification,
     NamePlan,
     Profile,
+    Unresolved,
 )
 from trovium.profiles.books import BooksProfile
 from trovium.profiles.video import VideoProfile
@@ -53,6 +54,7 @@ __all__ = [
     "Classification",
     "NamePlan",
     "Profile",
+    "Unresolved",
     "available_profiles",
     "get_profile",
     "register_profile",

@@ -150,3 +150,62 @@ def test_books_category_filter_rejects_video_scope(tmp_path: Path) -> None:
 
     assert code == 2
     assert record == {}
+
+
+def test_sibling_epub_shares_metadata_across_formats(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    library = tmp_path / "library"
+    library.mkdir()
+    make_epub(
+        source / "Sample Title - Sample Author.epub",
+        title="Sample Title",
+        author="Sample Author",
+        year=2020,
+    )
+    (source / "Sample Title - Sample Author.azw3").write_bytes(b"azw3")
+
+    code, record = _run(source, library, "--mode", "move")
+
+    assert code == 0
+    by_format = {
+        item["details"]["format"]: item
+        for item in record["items"]
+        if item.get("details")
+    }
+    assert by_format["epub"]["details"]["metadata_source"] == "epub"
+    assert by_format["azw3"]["details"]["metadata_source"] == "epub+sibling"
+    expected = str(library / "Books" / "Sample Author" / "Sample Title (2020)")
+    assert by_format["epub"]["destination"] == expected
+    assert by_format["azw3"]["destination"] == expected
+    placed = library / "Books" / "Sample Author" / "Sample Title (2020)"
+    assert (placed / "Sample Title - Sample Author.epub").exists()
+    assert (placed / "Sample Title - Sample Author.azw3").exists()
+
+
+def test_ambiguous_sibling_pairing_is_unresolvable(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    library = tmp_path / "library"
+    library.mkdir()
+    make_epub(source / "Book.epub", title="Book", author="Author", year=2020)
+    (source / "Book.EPUB").write_bytes(b"not a zip")
+    (source / "Book.azw3").write_bytes(b"azw3")
+    if len(list(source.glob("Book.*"))) < 3:
+        pytest.skip("filesystem cannot hold two same-stem EPUBs")
+
+    code, record = _run(source, library, "--mode", "copy")
+
+    assert code == 0
+    assert any(
+        item["disposition"] == "unresolvable"
+        and "ambiguous" in (item.get("reason") or "")
+        for item in record["items"]
+    )
+    assert any(
+        item["disposition"] == "ingested"
+        and item.get("details", {}).get("format") == "epub"
+        and item["details"]["metadata_source"] == "epub"
+        for item in record["items"]
+    )
+    assert not (library / "Books" / "Author" / "Book (2020)" / "Book.azw3").exists()

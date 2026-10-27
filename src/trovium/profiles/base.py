@@ -47,6 +47,13 @@ class Classification:
 
 
 @dataclass(frozen=True)
+class Unresolved:
+    """A specific reason a profile cannot classify a candidate."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
 class NamePlan:
     """One file's rename target, or a reason it cannot be named safely."""
 
@@ -93,8 +100,12 @@ class Profile(ABC):
         """Split one source entry into zero or more candidates."""
 
     @abstractmethod
-    def classify(self, group: CandidateGroup) -> Classification | None:
-        """Classify a candidate, or return ``None`` when it cannot be resolved."""
+    def classify(self, group: CandidateGroup) -> Classification | Unresolved | None:
+        """Classify a candidate, or return ``None`` when it cannot be resolved.
+
+        A profile may return :class:`Unresolved` with a specific reason; the
+        engine emits that reason instead of its generic grammar message.
+        """
 
     @abstractmethod
     def destination(self, classification: Classification, library_root: Path) -> Path:

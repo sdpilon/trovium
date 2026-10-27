@@ -21,7 +21,12 @@ from trovium.config import ConfigError, load_config
 from trovium.library import compare_existing
 from trovium.placement import apply_placement, plan_placement
 from trovium.profiles import available_profiles, get_profile
-from trovium.profiles.base import CandidateGroup, Classification, Profile
+from trovium.profiles.base import (
+    CandidateGroup,
+    Classification,
+    Profile,
+    Unresolved,
+)
 from trovium.record import (
     ActionKind,
     ClientAction,
@@ -304,6 +309,13 @@ def process(
         name=candidate.name, files=candidate.files, root=candidate.root
     )
     classification = profile.classify(group)
+    if isinstance(classification, Unresolved):
+        return ItemRecord(
+            name=candidate.name,
+            source=candidate.source,
+            disposition=Disposition.UNRESOLVABLE,
+            reason=classification.reason,
+        )
     if classification is None:
         return ItemRecord(
             name=candidate.name,
