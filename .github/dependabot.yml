@@ -1,12 +1,23 @@
 version: 2
 
+# One pull request per ecosystem per week instead of one per dependency: the
+# bumps land together, so the weekly noise is two reviews instead of eight and
+# a batch that needs a rebase needs it once.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
