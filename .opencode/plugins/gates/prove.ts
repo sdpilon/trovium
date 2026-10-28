@@ -24,6 +24,14 @@ import { evaluateAction, gatePath, HOOKS_REL, resolveBash, type Effect } from ".
 const root = process.cwd()
 const bash = resolveBash()
 
+function makeBrokenHookSandbox(): string {
+  const sandbox = mkdtempSync(join(tmpdir(), "trovium-adapter-broken-"))
+  const dir = join(sandbox, HOOKS_REL)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, "validate-bash.sh"), "#!/bin/bash\nexit 1\n", { mode: 0o755 })
+  return sandbox
+}
+
 function makeLocalRuleSandbox(projectRoot: string): string {
   const sandbox = mkdtempSync(join(tmpdir(), "trovium-adapter-local-"))
   cpSync(join(projectRoot, HOOKS_REL), join(sandbox, HOOKS_REL), { recursive: true })
@@ -58,6 +66,9 @@ if (localRuleRoot) {
   process.on("exit", () => rmSync(sandbox, { recursive: true, force: true }))
 }
 
+const brokenHookRoot = makeBrokenHookSandbox()
+process.on("exit", () => rmSync(brokenHookRoot, { recursive: true, force: true }))
+
 const localRuleCase: Case | undefined = localRuleRoot
   ? {
       name: "shell local rule",
@@ -88,9 +99,13 @@ const cases: Case[] = [
   // --- no gate for this action ----------------------------------------------
   { name: "read action is ungated", action: "read", resources: ["src/trovium/ingest.py"], expect: "allow" },
 
-  // --- regression: a broken (bash 3.2) hook must never silently allow --------
-  { name: "bash-3.2 broken hook -> ask, not allow", action: "shell",
-    resources: ["rm -rf /"], expect: "ask", bash: "/bin/bash" },
+  // --- regression: the macOS-default bash 3.2 still blocks (upstream #83) ----
+  { name: "bash 3.2 hook still blocks", action: "shell",
+    resources: ["rm -rf /"], expect: "block", bash: "/bin/bash" },
+
+  // --- regression: a broken hook must never silently allow ------------------
+  { name: "broken hook (exit 1) -> ask, not allow", action: "shell",
+    resources: ["ls -la"], expect: "ask", root: brokenHookRoot },
 
   // --- not projected -> inert (no policy to enforce) ------------------------
   { name: "not projected -> inert allow", action: "shell",
