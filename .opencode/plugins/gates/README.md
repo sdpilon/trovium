@@ -68,7 +68,7 @@ ASK   shell ["GATES_SKIP=1 echo gates-poc-live-ask-ok"]  :: gates: this command 
 - The **ASK** line: a `GATES_SKIP=1 …` command raised an ask; on approval the
   command ran.
 
-Run the offline proof (14 cases) from the project root:
+Run the offline proof (15 cases) from the project root:
 
 ```sh
 bun .opencode/plugins/gates/prove.ts
@@ -76,68 +76,58 @@ bun .opencode/plugins/gates/prove.ts
 
 It covers `.env`/`credentials.json` blocks, `rm -rf /` and `git push --force`
 blocks, `git push --delete` / `git commit --no-verify` asks, allows, a
-`hooks.local.d` rule, the bash-3.2 regression, and the not-projected-inert
-case. The local-rule case runs in a temporary copy of the projected hooks, so
-it never touches the checkout's own `hooks.local.d`.
+`hooks.local.d` rule, a hook that exits 1 surfacing as an ask, the bash-3.2
+interpreter still blocking, and the not-projected-inert case. The local-rule
+and broken-hook cases run in temporary copies, so they never touch the
+checkout's own hooks.
 
-## Bug found: `validate-bash.sh` is defeated on macOS's default bash (3.2)
+## Resolved upstream: the bash 3.2 silent-allow bug
 
-The bundled canary suite flags the agent boundary as broken on stock macOS, and
-it is right. `validate-bash.sh` wraps `grep`/`sed`/`tr`/`awk` in shell functions
-(lines 70–73) and tests them as `if grep …; then`. In **bash 3.2** — which is
-`/bin/bash` on macOS, and gates' hook shebang is `#!/bin/bash` — `set -e` is
-**not** suppressed inside a function body called as an `if` condition (fixed in
-later bash). So the hook exits 1 the moment a rule does not match, _before_ it
-prints any block:
+The adapter was written against spec-gates 0.3.x, where `validate-bash.sh`
+wrapped `grep`/`sed`/`tr`/`awk` in shell functions and tested them as
+`if grep …; then`. On macOS's `/bin/bash` 3.2, `set -e` was not suppressed
+inside a function body called as an `if` condition (fixed in later bash), so
+the hook exited 1 the moment a rule did not match, before printing any block.
+Claude Code read that as a non-blocking error and ran the command.
+
+spec-gates 0.4.0 rewrote the file and command hooks so they never silently
+allow (#83): a non-match falls through, undecidable input becomes a PreToolUse
+`ask`, and a missing `grep`/`sed`/`tr`/`awk` is named instead of allowed. The
+projected 0.4.1 validator now blocks under macOS's 3.2.57:
 
 ```sh
 $ printf '%s' '{"tool_input":{"command":"rm -rf /"}}' | CLAUDE_PROJECT_DIR=… /bin/bash .claude/hooks/gates/validate-bash.sh ; echo $?
-1                          # silent: Claude Code sees a non-blocking error and RUNS the command
-$ … | CLAUDE_PROJECT_DIR=… /opt/homebrew/bin/bash .claude/hooks/gates/validate-bash.sh ; echo $?
 BLOCKED: Destructive rm command targeting root, home, or wildcard
 2
 ```
 
-Minimal repro:
+`resolveBash()` still prefers a `bash >= 4` (`$GATES_BASH`, `bash` on `PATH`,
+Homebrew paths), and `prove.ts` pins `/bin/bash` as a regression case, so a
+future 3.2 regression fails the proof rather than passing silently. If only
+bash 3.2 is available, a broken hook surfaces as an **ask**, never an allow.
 
-```sh
-/bin/bash -c 'set -euo pipefail; grep() { command grep "$@"; }; if grep -qE zzz <<<hello; then :; fi; echo reached'
-# bash 3.2 prints nothing (exit 1); bash >=4 prints "reached"
-```
+## Canary status
 
-`protect-files.sh` is unaffected (it exits 2 before hitting a non-matching
-`if grep`). The git hooks are usually fine because the stub `exec bash`s the
-projected hook (`exec bash "$hook"`), picking up whatever `bash` is on `PATH`.
-
-**Implications.** On a machine whose `PATH` bash is 3.2, spec-gates'
-`validate-bash` agent hook silently allows every command and the canary reports
-it as a broken gate. The extension's own docs describe bash 3.2 support as a
-goal, so this is an upstream bug worth reporting.
-
-**What this adapter does about it.** `resolveBash()` prefers a `bash >= 4` on
-`PATH` (or `$GATES_BASH` / Homebrew paths) so the scripts run on a healthy
-interpreter. If only bash 3.2 is available, the broken hook surfaces as an
-**ask** rather than a silent allow.
-
-## Canary status on macOS
-
-`bash .specify/gates/canary.sh --only bash,bulk,local` still reports three
-accepted canaries on a stock macOS host. That is the bug above, measured
-through the Claude projection: the canary runs the projected hook by path, so
-its `#!/bin/bash` selects 3.2. The live OpenCode boundary is not affected:
-`resolveBash()` selects a bash >= 4, and `prove.ts` shows the same `rm -rf /`,
-`git add -A`, and `hooks.local.d` probes blocking through the adapter. The
-canary suite remains the signal for the Claude projection; the proof harness is
-the signal for this adapter.
+`bash .specify/gates/canary.sh` reports 16 run, 16 blocked, 0 accepted,
+0 skipped on macOS and in CI. The `bash`, `bulk` and `local` canaries that
+this README once listed as accepted now block: they probe the same
+`validate-bash.sh` script the adapter spawns, so the canary suite and the
+OpenCode boundary share one chokepoint instead of two implementations. The
+canaries still run the hook through its shebang (the Claude projection);
+`prove.ts` covers the adapter's translation layer.
 
 ## The real conversion gaps
 
 1. **`Stop` "refuse to end the turn" (`verify-quality.sh`, `format-changed.sh`).**
-   Claude Code's `Stop` hook can block the end of a turn; OpenCode has no 1:1.
-   The closest seam is `ctx.event.subscribe` on idle plus re-driving the session
-   (`ctx.session.synthetic` / prompt). Not attempted here — this is the one piece
-   that needs real design work, and it is why the PoC stops at the two
-   PreToolUse-style gates.
+   Claude Code's `Stop` hook can veto the end of a turn, and that is how XXII
+   (Stop Hook Discipline) is enforced at the agent boundary. OpenCode has no
+   block-before-stop seam: the closest is `ctx.event.subscribe` on idle plus
+   re-driving the session (`ctx.session.synthetic` / prompt), which starts
+   another turn instead of refusing the stop. Until that is designed, XXII
+   holds at the git and CI boundaries (pre-commit, `gates.yml`) but not at the
+   moment an OpenCode turn ends. `doctor.sh` still reports it as enforced
+   because the projection declares `verify-quality.sh`; this is the fidelity
+   gap, and it is why the PoC stops at the two PreToolUse-style gates.
 2. **`ask` routing.** Handled: gates' ask-JSON becomes OpenCode's permission
    `ask` effect rather than being passed through.
 3. **Fidelity of the `shell` resource.** OpenCode hands the permission hook the
