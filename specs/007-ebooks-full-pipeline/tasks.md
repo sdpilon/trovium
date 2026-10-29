@@ -235,6 +235,8 @@ the spec is marked Complete.
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
+export UV_NO_SYNC=1
 mkdir -p "$tmp/home" "$tmp/library" "$tmp/source" "$tmp/config" "$tmp/bin"
 export HOME="$tmp/home"
 export TROVIUM_BIN_DIR="$tmp/bin"
@@ -267,6 +269,8 @@ test ! -e "$tmp/other/config/config.ini"
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'kill "${srv:-0}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
+export UV_NO_SYNC=1
 mkdir -p "$tmp/downloads/Some Book" "$tmp/library"
 printf 'epub' > "$tmp/downloads/Some Book/Some.Book.epub"
 printf '<package><metadata><title>Some Book</title><creator>Jane Doe</creator><date>2020</date></metadata></package>' \
@@ -326,6 +330,8 @@ test -f "$tmp/library/Books/Jane Doe/Some Book (2020)/cover.jpg"
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
+export UV_NO_SYNC=1
 mkdir -p "$tmp/source/Some Book" "$tmp/library"
 printf 'epub' > "$tmp/source/Some Book/Some.Book.epub"
 printf '<package><metadata><title>Some Book</title><creator>Jane Doe</creator><date>2020</date></metadata></package>' \
@@ -344,6 +350,8 @@ test "$(find "$tmp/library" -name '*.epub' | wc -l)" -eq 1
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'kill "${srv:-0}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
+export UV_NO_SYNC=1
 mkdir -p "$tmp/downloads/Two Books" "$tmp/library"
 printf 'one' > "$tmp/downloads/Two Books/Book One.epub"
 printf 'two' > "$tmp/downloads/Two Books/Book Two.epub"
