@@ -232,6 +232,7 @@ the spec is marked Complete.
 
 ```accept
 # verifies: SC-001 — a books install writes the adaptive default and an unknown profile is refused
+repo=$(pwd)
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
@@ -246,9 +247,8 @@ export TROVIUM_CONFIG_FILE="$tmp/config/config.ini"
 export TROVIUM_STATE_HOME="$tmp/state"
 export TROVIUM_DATA_HOME="$tmp/data"
 export TROVIUM_CACHE_HOME="$tmp/cache"
-export UV_PROJECT_ENVIRONMENT="$tmp/project-venv"
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
-uv run --frozen --quiet python tools/release/build_bundle.py --local --version "$version" --out "$tmp/dist" >/dev/null
+"$repo/.venv/bin/python" tools/release/build_bundle.py --local --version "$version" --out "$tmp/dist" >/dev/null
 bundle=$(find "$tmp/dist" -name "trovium-$version-*.tar.gz" | head -1)
 bash install.sh --bundle "$bundle" --non-interactive \
   --library-root "$tmp/library" --source "$tmp/source" \
