@@ -57,6 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
     source_group.add_argument("--source", type=Path)
     source_group.add_argument("--client-url")
     install_parser.add_argument("--config", type=Path)
+    install_parser.add_argument(
+        "--profile",
+        help="media profile for the generated config (default: video)",
+    )
     install_parser.add_argument("--force", action="store_true")
     install_parser.add_argument(
         "--json",
@@ -139,6 +143,7 @@ def _dispatch(args: argparse.Namespace) -> Report | None:
                 source=args.source,
                 client_url=args.client_url,
                 config=args.config,
+                profile=args.profile,
                 force=bool(args.force),
                 json_style=_json_style(args.json),
                 uv_override=args.uv or _test_override("TROVIUM_TEST_UV"),

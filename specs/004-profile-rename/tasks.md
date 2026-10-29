@@ -98,18 +98,16 @@ jq -e '.counts.renamed == 0 and .counts.already_handled > 0' "$tmp/second.json" 
 ```
 
 ```accept
-# verifies: SC-005 — copy/hardlink records are refused without the override
+# verifies: SC-005 — copy/hardlink records are renamed without an override
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/source/Movie.Production.2024.1080p" "$tmp/library"
 printf x > "$tmp/source/Movie.Production.2024.1080p/Movie.Production.2024.1080p.mkv"
 uv run --quiet trovium-ingest --source "$tmp/source" --library-root "$tmp/library" \
   --mode copy --json compact > "$tmp/ingest.json"
-code=0
-uv run --quiet trovium-rename --record "$tmp/ingest.json" --json compact > "$tmp/out.json" 2> "$tmp/err.txt" || code=$?
-test "$code" -eq 2
-grep -q -- '--allow-unsafe' "$tmp/err.txt"
-test -f "$tmp/library/Movies/Movie Production (2024)/Movie.Production.2024.1080p.mkv"
+uv run --quiet trovium-rename --record "$tmp/ingest.json" --json compact > "$tmp/out.json"
+jq -e '.counts.renamed == 1 and .counts.error == 0' "$tmp/out.json" >/dev/null
+test -f "$tmp/library/Movies/Movie Production (2024)/Movie Production (2024).mkv"
 ```
 
 ```accept

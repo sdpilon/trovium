@@ -119,19 +119,19 @@ The command exits `0` when the run completed — per-item problems are recorded,
 not fatal — `2` on misuse, and `3` on a run-level client failure (unreachable,
 unauthenticated, or a malformed response).
 
-| Option                              | Default              | Notes                                                                                     |
-| ----------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
-| `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url`    |
-| `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                                |
-| `--library-root PATH`               | required             | library destination root                                                                  |
-| `--config PATH`                     | XDG                  | configuration file (default: XDG `trovium/config.ini`)                                    |
-| `--profile NAME`                    | `video`              | media profile (`video`, `books`)                                                          |
-| `--category VALUE`                  | `all`                | declared run scope; the profile defines the values (video: movie/tv/all; books: book/all) |
-| `--mode {move,copy,hardlink}`       | `move`               | placement semantics                                                                       |
-| `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                     |
-| `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                           |
-| `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                                 |
-| `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                      |
+| Option                              | Default              | Notes                                                                                                                                       |
+| ----------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--source PATH`                     | —                    | directory whose direct children are candidates; mutually exclusive with `--client-url`                                                      |
+| `--client-url URL`                  | `TROVIUM_CLIENT_URL` | qBittorrent WebUI base URL                                                                                                                  |
+| `--library-root PATH`               | required             | library destination root                                                                                                                    |
+| `--config PATH`                     | XDG                  | configuration file (default: XDG `trovium/config.ini`)                                                                                      |
+| `--profile NAME`                    | `video`              | media profile (`video`, `books`)                                                                                                            |
+| `--category VALUE`                  | `all`                | declared run scope; the profile defines the values (video: movie/tv/all; books: book/all)                                                   |
+| `--mode {auto,move,copy,hardlink}`  | `auto`               | placement semantics: `auto` hardlinks a seeding torrent on one filesystem, copies across filesystems, and moves disk or non-seeding sources |
+| `--post-ingest {keep,pause,delete}` | `keep`               | client-side policy (client mode only)                                                                                                       |
+| `--dry-run`                         | off                  | emit the plan; touch neither source nor library                                                                                             |
+| `--on-fail {stop,continue}`         | `continue`           | per-item failure behavior                                                                                                                   |
+| `--json {compact,pretty}`           | `pretty`             | formatting of the record (same data)                                                                                                        |
 
 `--source`, `--client-url`, `--library-root`, and `--config` also read
 environment fallbacks (`TROVIUM_SOURCE`, `TROVIUM_CLIENT_URL`,
@@ -149,15 +149,18 @@ The `books` profile reads EPUB metadata first, falls back to a Calibre
 `N - Title` series index). A non-EPUB file without its own metadata reuses a
 same-stem sibling EPUB's metadata when exactly one exists. Ebooks land under
 `Books/<Author>/<Title> (Year)/`; ambiguous names are reported as
-`unresolvable` rather than guessed. Original filenames are preserved.
+`unresolvable` rather than guessed. A client folder torrent holding one book
+plus its sidecars is placed as one item and the sidecars travel with it; a
+torrent holding several distinct books is `unresolvable` with the files named.
 
-> **Client-mode note.** With `--mode move`, the client is pointed at the
-> library folder (`setLocation`). That is safe for single-file torrents only;
-> a **folder torrent** (including one holding a single video plus sidecars) is
-> refused as a per-item error with guidance to use `--mode copy` or
-> `--mode hardlink`, because the flat library layout does not match the
-> client's `<save_path>/<torrent name>/` expectation and moving the files would
-> break seeding.
+> **Client-mode note.** The default `auto` mode keeps seeding: a completed
+> torrent is hardlinked when the download and library directories share a
+> filesystem and copied when they do not, with no `setLocation` call. An
+> explicit `--mode move` points the client at the library folder
+> (`setLocation`), which is safe for single-file torrents only; a **folder
+> torrent** is refused as a per-item error with guidance to keep seeding,
+> because the flat library layout does not match the client's
+> `<save_path>/<torrent name>/` expectation.
 
 ### `trovium-rename`
 
@@ -183,10 +186,11 @@ Books become `Author - Title (Year).ext` (or
 TV episodes become `Show - S01E01.ext`. Sidecars keep their names. Multi-file
 movies and TV files without an episode marker are `skipped` with a reason.
 
-The default is safe: only `move` records are renamed. A copy/hardlink library
-still has its source, so renaming breaks the ingest no-op rerun; a hardlink
-can also be the file a client is seeding. After seeding stops and the source is
-gone, `--allow-unsafe` permits copy/hardlink and client-relocated items.
+The default is safe and idempotent: copy, hardlink, and `auto` records are
+renamed, and a later ingest recognizes the renamed file by content rather than
+by name. Only a client item whose torrent was relocated into the library is
+skipped, because renaming the file the client tracks breaks seeding.
+`--allow-unsafe` overrides that skip after seeding stops.
 
 Full contract:
 [`specs/004-profile-rename/contracts/`](specs/004-profile-rename/contracts/).
@@ -209,9 +213,9 @@ trovium-run --config ~/.config/trovium/config.ini --dry-run
 trovium-run --profile books --source ~/Books/incoming --library-root ~/Media
 ```
 
-Copy/hardlink runs place files but skip rename by default, because the source
-is still present. `--allow-unsafe` passes the rename override through;
-`--skip-rename` runs ingest only.
+Copy, hardlink, and `auto` runs rename the placed files. Only client items
+whose torrent was relocated into the library are skipped; `--allow-unsafe`
+passes the rename override through. `--skip-rename` runs ingest only.
 
 Full contract:
 [`specs/005-pipeline-runner/contracts/`](specs/005-pipeline-runner/contracts/).
@@ -235,13 +239,16 @@ bash install.sh --non-interactive --library-root /srv/media \
   --source /srv/incoming                                     # unattended, disk source
 bash install.sh --non-interactive --library-root /srv/media \
   --client-url http://127.0.0.1:8080                         # unattended, client source
+bash install.sh --non-interactive --library-root /srv/media \
+  --client-url http://127.0.0.1:8080 --profile books         # ebooks
 bash install.sh --version 0.2.0 --non-interactive \
   --library-root /srv/media --source /srv/incoming           # pinned version
 ```
 
 An unattended install needs one of `--source` or `--client-url`. Without one
 the install succeeds, but the config has no source and `trovium-deploy status`
-reports `degraded`.
+reports `degraded`. Pass `--profile books` (or any registered profile) to write
+that profile into the config; new installs use the adaptive `auto` mode.
 
 Downloading first and then running `bash install.sh` keeps a failed download
 from being piped into the shell as if it were a script.

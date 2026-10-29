@@ -64,23 +64,25 @@ verify the file names and the skipped multi-file cases.
 ### User Story 3 - Rename is safe and inspectable (Priority: P1)
 
 A user can run rename with `--dry-run` to see the exact plan before changing
-anything. Copy/hardlink ingests and client-relocated torrents are refused by
-default because renaming those can break seeding and ingest's no-op rerun; an
+anything. Copy and hardlink ingests are renamed by default (feature 007);
+renaming their library copy is safe because ingest recognizes the renamed file
+by content on the next run. A client-relocated torrent is still refused,
+because renaming the library file the client tracks breaks seeding; an
 explicit `--allow-unsafe` override exists for a user who has stopped seeding
 and removed the source.
 
-**Why this priority**: Renaming files the client is seeding, or files whose
-source still exists, silently breaks the pipeline's guarantees.
+**Why this priority**: Renaming files the client is seeding silently breaks the
+pipeline's guarantees.
 
 **Independent Test**: Run a dry-run, compare it with the real run, and verify
-that a copy-mode record is refused without the override.
+that a copy-mode record is renamed while a `setLocation` item is skipped.
 
 **Acceptance Scenarios**:
 
 1. **Given** a dry-run, **When** the same record is renamed for real, **Then**
    the actions match field-for-field and the files are renamed.
-2. **Given** a copy/hardlink ingest record, **When** rename runs without
-   `--allow-unsafe`, **Then** it refuses before changing anything.
+2. **Given** a copy/hardlink ingest record, **When** rename runs, **Then** the
+   placed file is renamed and a later ingest recognizes it by content.
 3. **Given** a client item whose record contains a `setLocation` action,
    **When** rename runs without `--allow-unsafe`, **Then** that item is
    `skipped` with a seeding reason.
@@ -112,9 +114,9 @@ that a copy-mode record is refused without the override.
   reports `already_handled` and changes nothing.
 - **FR-009**: Rename MUST NOT overwrite an existing target. A collision marks
   the item `error`; no file in that item is renamed.
-- **FR-010**: Rename MUST refuse a record whose `declared.mode` is not `move`
-  unless `--allow-unsafe` is given. It MUST skip a client item whose
-  `client_actions` contains `setLocation` unless `--allow-unsafe` is given.
+- **FR-010**: Rename MUST rename copy/hardlink records. It MUST skip a client
+  item whose `client_actions` contains `setLocation` unless `--allow-unsafe` is
+  given.
 - **FR-011**: The rename record MUST echo `declared.profile`,
   `declared.library_root`, and `declared.mode`, and MUST include per-item
   `kind`, `title`, `details`, `destination`, `disposition`, `reason`, and
@@ -144,8 +146,8 @@ that a copy-mode record is refused without the override.
   patterns; unsafe multi-file movies are `skipped`.
 - **SC-003**: A dry-run plan matches the real run field-for-field.
 - **SC-004**: A second rename of the same record is a no-op.
-- **SC-005**: A copy/hardlink record is refused without `--allow-unsafe`, and a
-  `setLocation` client item is skipped with a seeding reason.
+- **SC-005**: A copy/hardlink record is renamed without an override, and a
+  `setLocation` client item is still skipped with a seeding reason.
 - **SC-006**: A target collision leaves every file in that item untouched and
   is reported as `error`.
 
@@ -161,7 +163,7 @@ that a copy-mode record is refused without the override.
 
 - The record's destinations are absolute and already point at the library
   folders ingest created.
-- The safe default is `move`; copy/hardlink users must stop seeding, remove the
-  source, and explicitly pass `--allow-unsafe`.
+- Copy/hardlink renaming is safe because ingest compares destination content;
+  only client-relocated items need `--allow-unsafe` after seeding stops.
 - Naming is deterministic from the record's classification; rename does not
   call the classifier again.

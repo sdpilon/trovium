@@ -38,26 +38,26 @@ the files are renamed.
 
 ### User Story 2 - Dry-run and safe composition (Priority: P1)
 
-A user can inspect a run without changing anything. Copy/hardlink runs place
-files but skip rename by default, because the rename step would refuse them
-unless `--allow-unsafe` is given.
+A user can inspect a run without changing anything. Copy and hardlink runs
+place the files and rename them; the rename step only skips client-relocated
+items (feature 007).
 
 **Why this priority**: A runner must not silently break the safety rules of
 the steps it composes.
 
 **Independent Test**: Run `--dry-run` and verify nothing changed and rename is
-not planned. Run a copy-mode source and verify ingest happened while rename was
-skipped with a reason.
+not planned. Run a copy-mode source and verify ingest placed the files and
+rename canonicalized them.
 
 **Acceptance Scenarios**:
 
 1. **Given** `--dry-run`, **When** the runner runs, **Then** no file is
    placed or renamed, and `rename` is null with a `rename_skipped` reason.
-2. **Given** a copy/hardlink source, **When** the runner runs without
-   `--allow-unsafe`, **Then** ingest places the files and rename is skipped
-   with a reason.
+2. **Given** a copy/hardlink source, **When** the runner runs, **Then** ingest
+   places the files and rename renames them.
 3. **Given** `--allow-unsafe`, **When** the runner runs a copy-mode source,
-   **Then** rename is attempted and the rename record reports any collision.
+   **Then** a client-relocated item is renamed too and any collision is
+   reported.
 4. **Given** an unreachable client, **When** the runner runs, **Then** it
    exits 3 and does not attempt rename.
 
@@ -72,8 +72,8 @@ skipped with a reason.
 - **FR-003**: It MUST run rename through the existing rename engine when the
   ingest record's mode is `move` and the run is not a dry-run.
 - **FR-004**: It MUST skip rename, with a reason in the combined record, when
-  `--skip-rename` is set, the run is a dry-run, or the mode is copy/hardlink
-  without `--allow-unsafe`.
+  `--skip-rename` is set or the run is a dry-run. Client-relocated items are
+  skipped per item by rename itself.
 - **FR-005**: `--allow-unsafe` MUST be passed through to rename.
 - **FR-006**: The combined record MUST be JSON on stdout:
   `{source: "run", dry_run, profile, library_root, ingest, rename,
@@ -101,8 +101,8 @@ rename_skipped}`. `ingest` is the existing ingest record; `rename` is the
   combined record contains both sections.
 - **SC-002**: A movie/TV source is ingested and renamed in one command.
 - **SC-003**: `--dry-run` changes nothing and clearly skips rename.
-- **SC-004**: A copy-mode run places files and skips rename with a reason
-  unless `--allow-unsafe` is given.
+- **SC-004**: A copy-mode run places files and renames them without an
+  override.
 - **SC-005**: An unreachable client exits 3 and does not attempt rename.
 - **SC-006**: The deployed command set includes `trovium-run`.
 

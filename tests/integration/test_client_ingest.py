@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from trovium import cli
+from trovium import cli, run
 from trovium.adapters.qbittorrent import AdapterError, QbittorrentClient
 
 BASE_URL = "http://client.invalid"
@@ -70,6 +70,17 @@ def _run(library: Path, *extra: str) -> tuple[int, dict[str, Any], str]:
     return code, payload, err.getvalue()
 
 
+def _run_pipeline(library: Path, *extra: str) -> tuple[int, dict[str, Any], str]:
+    import contextlib
+    import io
+
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = run.main(["--library-root", str(library), *extra])
+    payload = json.loads(out.getvalue()) if out.getvalue() else {}
+    return code, payload, err.getvalue()
+
+
 def test_completed_torrent_is_ingested_and_client_updated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -110,7 +121,7 @@ def test_completed_torrent_is_ingested_and_client_updated(
 
     monkeypatch.setattr(cli_module, "QbittorrentClient", factory)
 
-    code, record, _ = _run(library)
+    code, record, _ = _run(library, "--mode", "move")
 
     assert code == 0
     assert record["source"] == "client"
@@ -337,7 +348,7 @@ def test_client_failure_after_placement_is_reported_as_item_error(
         ),
     )
 
-    code, record, _ = _run(library)
+    code, record, _ = _run(library, "--mode", "move")
 
     item = record["items"][0]
     assert code == 0
@@ -381,7 +392,7 @@ def test_dry_run_in_client_mode_does_not_call_the_client(
         ),
     )
 
-    code, record, _ = _run(library, "--dry-run")
+    code, record, _ = _run(library, "--dry-run", "--mode", "move")
 
     assert code == 0
     assert record["dry_run"] is True
@@ -454,7 +465,7 @@ def test_multi_file_torrent_with_move_is_refused_with_guidance(
         ),
     )
 
-    code, record, _ = _run(library)
+    code, record, _ = _run(library, "--mode", "move")
 
     assert code == 0
     item = record["items"][0]
@@ -523,7 +534,7 @@ def test_folder_torrent_with_one_media_file_is_refused_in_move_mode(
         ),
     )
 
-    code, record, _ = _run(library)
+    code, record, _ = _run(library, "--mode", "move")
 
     assert code == 0
     item = record["items"][0]
@@ -589,8 +600,8 @@ def test_dry_run_plans_setlocation_for_already_handled_removal(
     assert code == 0
     assert first["items"][0]["disposition"] == "ingested"
 
-    code, planned, _ = _run(library, "--dry-run")
-    code, executed, _ = _run(library)
+    code, planned, _ = _run(library, "--dry-run", "--mode", "move")
+    code, executed, _ = _run(library, "--mode", "move")
 
     planned_item = planned["items"][0]
     executed_item = executed["items"][0]
@@ -670,12 +681,14 @@ def test_move_with_pause_pauses_before_relocating(
         ),
     )
 
-    code, planned, _ = _run(library, "--post-ingest", "pause", "--dry-run")
+    code, planned, _ = _run(
+        library, "--post-ingest", "pause", "--dry-run", "--mode", "move"
+    )
     assert code == 0
     planned_ops = [action["op"] for action in planned["items"][0]["client_actions"]]
     assert planned_ops == ["pause", "setLocation", "recheck"]
 
-    code, record, _ = _run(library, "--post-ingest", "pause")
+    code, record, _ = _run(library, "--post-ingest", "pause", "--mode", "move")
 
     assert code == 0
     assert record["items"][0]["disposition"] == "ingested"
@@ -847,3 +860,127 @@ def test_second_client_run_after_setlocation_keeps_the_library_file(
     assert item["disposition"] == "already_handled"
     assert item["actions"] == []
     assert placed.exists()
+
+
+def test_ebook_folder_torrent_hardlinks_sidecars_and_renames(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Some Book"
+    content.mkdir(parents=True)
+    epub = content / "Some.Book.epub"
+    epub.write_bytes(b"epub-bytes")
+    (content / "metadata.opf").write_text(
+        "<package><metadata><title>Some Book</title>"
+        "<creator>Jane Doe</creator><date>2020</date></metadata></package>",
+        encoding="utf-8",
+    )
+    (content / "cover.jpg").write_bytes(b"jpg")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport(
+        [_torrent("Some Book", content, root_path=content, category="books")]
+    )
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, record, _ = _run_pipeline(library, "--profile", "books")
+
+    assert code == 0
+    item = record["ingest"]["items"][0]
+    assert item["disposition"] == "ingested"
+    assert {action["op"] for action in item["actions"]} == {"hardlink"}
+    assert item.get("client_actions") in (None, [])
+    destination = Path(item["destination"])
+    assert destination == library / "Books" / "Jane Doe" / "Some Book (2020)"
+    renamed = destination / "Jane Doe - Some Book (2020).epub"
+    assert renamed.read_bytes() == b"epub-bytes"
+    assert renamed.stat().st_ino == epub.stat().st_ino
+    assert (destination / "metadata.opf").exists()
+    assert (destination / "cover.jpg").exists()
+
+    code, second, _ = _run_pipeline(library, "--profile", "books")
+
+    assert code == 0
+    assert second["ingest"]["items"][0]["disposition"] == "already_handled"
+    assert len(list(library.rglob("*.epub"))) == 1
+
+
+def test_multi_book_torrent_is_unresolvable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Two Books"
+    content.mkdir(parents=True)
+    (content / "Book One.epub").write_bytes(b"one")
+    (content / "Book Two.epub").write_bytes(b"two")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport(
+        [_torrent("Two Books", content, root_path=content, category="books")]
+    )
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, record, _ = _run_pipeline(library, "--profile", "books")
+
+    assert code == 0
+    item = record["ingest"]["items"][0]
+    assert item["disposition"] == "unresolvable"
+    assert "Book One" in item["reason"]
+    assert "Book Two" in item["reason"]
+    assert not list(library.rglob("*.epub"))
+
+
+def test_multi_format_torrent_merges_one_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = tmp_path / "downloads" / "Some Book"
+    content.mkdir(parents=True)
+    (content / "Jane Doe - Some Book (2020).epub").write_bytes(b"epub-bytes")
+    (content / "Jane Doe - Some Book (2020).azw3").write_bytes(b"azw3-bytes")
+    library = tmp_path / "library"
+    library.mkdir()
+
+    transport = _transport(
+        [
+            _torrent(
+                "Jane Doe - Some Book (2020)",
+                content,
+                root_path=content,
+                category="books",
+            )
+        ]
+    )
+    import trovium.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "QbittorrentClient",
+        lambda url, username, password: QbittorrentClient(
+            url, username, password, transport=transport
+        ),
+    )
+
+    code, record, _ = _run_pipeline(library, "--profile", "books")
+
+    assert code == 0
+    item = record["ingest"]["items"][0]
+    assert item["disposition"] == "ingested"
+    destination = Path(item["destination"])
+    assert (destination / "Jane Doe - Some Book (2020).epub").exists()
+    assert (destination / "Jane Doe - Some Book (2020).azw3").exists()

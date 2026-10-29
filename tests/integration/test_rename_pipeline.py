@@ -134,7 +134,7 @@ def test_rename_dry_run_matches_the_real_run(tmp_path: Path) -> None:
     assert plan["items"][0]["actions"] == real["items"][0]["actions"]
 
 
-def test_copy_mode_record_is_refused(tmp_path: Path) -> None:
+def test_copy_mode_record_is_renamed(tmp_path: Path) -> None:
     source = tmp_path / "source"
     release = source / "Movie.Production.2024.1080p"
     release.mkdir(parents=True)
@@ -146,14 +146,11 @@ def test_copy_mode_record_is_refused(tmp_path: Path) -> None:
 
     code, payload, err = _run(rename.main, ["--record", str(record_path)])
 
-    assert code == 2
-    assert payload == {}
-    assert "--allow-unsafe" in err
+    assert code == 0
+    assert payload["counts"]["renamed"] == 1
+    assert err == ""
     assert (
-        library
-        / "Movies"
-        / "Movie Production (2024)"
-        / "Movie.Production.2024.1080p.mkv"
+        library / "Movies" / "Movie Production (2024)" / "Movie Production (2024).mkv"
     ).exists()
 
 

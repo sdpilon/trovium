@@ -106,7 +106,7 @@
 ## 9. Dry-run parity
 
 - **Decision**: the plan resolves `auto` before computing actions, so
-  `--dry-run` reports the same `link` / `copy` / `move` operations and reasons
+  `--dry-run` reports the same `hardlink` / `copy` / `move` operations and reasons
   as a real run. `declared.mode` stays `auto`; the actions carry the effective
   operation.
 - **Rationale**: FR-006-style parity is already pinned in 001; adding a mode

@@ -98,3 +98,27 @@ def test_compare_existing_detects_collision_in_partial_overlap(
     result = compare_existing(destination, files)
     assert result.sameness is Sameness.COLLISION
     assert result.detail is not None
+
+
+def test_renamed_library_file_counts_as_already_handled(tmp_path: Path) -> None:
+    source = tmp_path / "Some.Release.Name.epub"
+    source.write_bytes(b"book-bytes")
+    destination = tmp_path / "dest"
+    destination.mkdir()
+    (destination / "Jane Doe - Some Book (2020).epub").write_bytes(b"book-bytes")
+
+    result = compare_existing(destination, (source,))
+
+    assert result.sameness is Sameness.IDENTICAL
+
+
+def test_renamed_library_file_with_different_content_is_new(tmp_path: Path) -> None:
+    source = tmp_path / "Some.Release.Name.epub"
+    source.write_bytes(b"book-bytes")
+    destination = tmp_path / "dest"
+    destination.mkdir()
+    (destination / "Jane Doe - Some Book (2020).epub").write_bytes(b"other-bytes")
+
+    result = compare_existing(destination, (source,))
+
+    assert result.sameness is Sameness.NONE

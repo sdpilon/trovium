@@ -63,14 +63,14 @@ file is written.
 The combined `trovium-run` record keeps the existing shape; these fields carry
 the feature:
 
-| Field                      | Change                                                           |
-| -------------------------- | ---------------------------------------------------------------- |
-| `declared.mode`            | May be `auto`; still echoes the operator's choice.               |
-| `items[].actions[].op`     | `move`, `copy`, or `link` — the effective operation per file.    |
-| `items[].actions[].reason` | Carries `hardlink unavailable…; copied instead` when applicable. |
-| `items[].disposition`      | `unresolvable` when `unresolved_reason` is set.                  |
-| `items[].reason`           | Names the conflicting groups for a multi-book torrent.           |
-| `items[].client_actions`   | Unchanged; `setLocation` marks a relocated item.                 |
+| Field                      | Change                                                            |
+| -------------------------- | ----------------------------------------------------------------- |
+| `declared.mode`            | May be `auto`; still echoes the operator's choice.                |
+| `items[].actions[].op`     | `move`, `copy`, or `hardlink` — the effective operation per file. |
+| `items[].actions[].reason` | Carries `hardlink unavailable…; copied instead` when applicable.  |
+| `items[].disposition`      | `unresolvable` when `unresolved_reason` is set.                   |
+| `items[].reason`           | Names the conflicting groups for a multi-book torrent.            |
+| `items[].client_actions`   | Unchanged; `setLocation` marks a relocated item.                  |
 
 ## Placement identity
 

@@ -98,7 +98,7 @@ find "$tmp/library" -type f | wc -l                         # unchanged
 with `profile = books` and `mode = auto`.
 
 ```sh
-jq -r '.ingest.items[0].actions[].op' "$tmp/client-run.json"   # link, link, link
+jq -r '.ingest.items[0].actions[].op' "$tmp/client-run.json"   # hardlink, hardlink, hardlink
 stat -c '%i' "$torrent_file" "$library_file"                   # same inode
 jq -r '.rename.items[0].disposition' "$tmp/client-run.json"    # renamed
 ls "$tmp/library/Books/<Author>/<Title> (Year)/"               # epub + sidecars

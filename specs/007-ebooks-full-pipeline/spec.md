@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-29
 
-**Status**: Draft
+**Status**: Complete
 
 **Input**: Make the books profile run the full pipeline: select the profile at install, ingest folder-shaped ebook torrents from qBittorrent, and rename the placed EPUBs end to end.
 

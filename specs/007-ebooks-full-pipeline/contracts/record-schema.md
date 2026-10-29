@@ -21,12 +21,12 @@ added.
         "destination": "/library/Books/Jane Doe/Some Book (2020)",
         "actions": [
           {
-            "op": "link",
+            "op": "hardlink",
             "source": "…/Some.Book.epub",
             "destination": "…/Some.Book.epub"
           },
           {
-            "op": "link",
+            "op": "hardlink",
             "source": "…/metadata.opf",
             "destination": "…/metadata.opf"
           }
@@ -42,7 +42,7 @@ added.
 ### Rules
 
 - `declared.mode` is one of `auto`, `move`, `copy`, `hardlink`.
-- `items[].actions[].op` is the effective operation: `link` for a hardlink,
+- `items[].actions[].op` is the effective operation: `hardlink` for a hardlink,
   `copy`, or `move` (plus `delete` for the move cleanup of an already-handled
   item).
 - A hardlink that the filesystem refuses is a `copy` action whose reason says

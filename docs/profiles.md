@@ -118,10 +118,13 @@ naming tests next to its classification tests.
 - Return `None` or `Unresolved(reason)` for ambiguity. The engine records
   `unresolvable` and leaves the source untouched.
 - Use `safe_component` for every user-derived path segment.
-- Keep destinations stable; idempotency compares the resolved destination's
-  files by name, size, and hash. An unstable layout breaks the no-op rerun.
+- Keep destinations stable; idempotency compares the destination's files by
+  content (size and hash), even when a previous rename changed the name. An
+  unstable layout breaks the no-op rerun.
 - One candidate's files travel together. If a folder holds many items, yield
-  one group per item (books does this).
+  one group per item (books does this). In client mode the engine expands one
+  torrent through `groups()`; several distinct groups make the torrent
+  `unresolvable` instead of splitting it across client actions.
 - A profile does not add a pipeline capability. Browsing or downloading a new
   type is a new step, not a larger profile.
 

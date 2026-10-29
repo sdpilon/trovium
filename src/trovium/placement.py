@@ -50,7 +50,7 @@ def _filesystem_anchor(path: Path) -> Path | None:
     return None
 
 
-def _same_filesystem(source: Path, destination_dir: Path) -> bool:
+def same_filesystem(source: Path, destination_dir: Path) -> bool:
     anchor = _filesystem_anchor(destination_dir)
     if anchor is None:
         return False
@@ -60,11 +60,31 @@ def _same_filesystem(source: Path, destination_dir: Path) -> bool:
         return False
 
 
+def effective_mode(
+    mode: Mode,
+    *,
+    seeding: bool,
+    files: tuple[Path, ...],
+    destination: Path,
+) -> Mode:
+    """Resolve ``auto`` for one candidate; explicit modes pass through.
+
+    A seeding torrent hardlinks when its files share a filesystem with the
+    destination and copies when they do not. Everything else moves: disk
+    entries and client items whose files are not seeding.
+    """
+    if mode is not Mode.AUTO:
+        return mode
+    if seeding and files:
+        return Mode.HARDLINK if same_filesystem(files[0], destination) else Mode.COPY
+    return Mode.MOVE
+
+
 def _planned_operation(
     mode: Mode, source: Path, destination: Path
 ) -> tuple[ActionKind, str | None]:
     """Predict the operation and any fallback note (SC-005 parity at plan time)."""
-    same_fs = _same_filesystem(source, destination)
+    same_fs = same_filesystem(source, destination)
     if mode is Mode.HARDLINK and not same_fs:
         return (
             ActionKind.COPY,
@@ -239,14 +259,14 @@ def _perform(
 ) -> tuple[ActionKind, str | None]:
     """Perform one placement and report the operation actually used."""
     if mode is Mode.MOVE:
-        cross_volume = not _same_filesystem(source, destination)
+        cross_volume = not same_filesystem(source, destination)
         shutil.move(str(source), str(target))
         note = "cross-volume move: copied then removed source" if cross_volume else None
         return ActionKind.MOVE, note
     if mode is Mode.COPY:
         shutil.copy2(source, target)
         return ActionKind.COPY, None
-    if _same_filesystem(source, destination):
+    if same_filesystem(source, destination):
         try:
             os.link(source, target)
             return ActionKind.HARDLINK, None

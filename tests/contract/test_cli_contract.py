@@ -208,7 +208,7 @@ def test_record_shape_and_counts_reconcile(
     assert record["dry_run"] is False
     assert record["declared"]["library_root"].endswith("library")
     assert record["declared"]["post_ingest"] is None
-    assert record["declared"]["mode"] == "move"
+    assert record["declared"]["mode"] == "auto"
     assert record["declared"]["category"] == "all"
     assert record["counts"]["total"] == len(record["items"])
     assert (

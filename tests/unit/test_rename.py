@@ -215,7 +215,7 @@ def test_client_relocated_item_is_skipped(tmp_path: Path) -> None:
     assert source.exists()
 
 
-def test_copy_record_is_refused_by_the_cli(
+def test_copy_record_is_renamed_by_default(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     destination = tmp_path / "book"
@@ -234,9 +234,10 @@ def test_copy_record_is_refused_by_the_cli(
     code = rename.main(["--record", str(record)])
 
     captured = capsys.readouterr()
-    assert code == 2
-    assert "--allow-unsafe" in captured.err
-    assert source.exists()
+    assert code == 0
+    assert captured.err == ""
+    assert not source.exists()
+    assert (destination / "Jane Doe - Book (2020).epub").exists()
 
 
 def test_allow_unsafe_permits_copy_mode(

@@ -95,7 +95,7 @@ def test_dry_run_changes_nothing_and_skips_rename(tmp_path: Path) -> None:
     assert list(library.iterdir()) == []
 
 
-def test_copy_mode_skips_rename_by_default(tmp_path: Path) -> None:
+def test_copy_mode_renames_by_default(tmp_path: Path) -> None:
     source, library = _movie_source(tmp_path)
 
     code, payload, _ = _run(
@@ -114,13 +114,10 @@ def test_copy_mode_skips_rename_by_default(tmp_path: Path) -> None:
 
     assert code == 0
     assert payload["ingest"]["counts"]["ingested"] == 1
-    assert payload["rename"] is None
-    assert "allow-unsafe" in payload["rename_skipped"]
+    assert payload["rename"] is not None
+    assert payload["rename"]["counts"]["renamed"] == 1
     assert (
-        library
-        / "Movies"
-        / "Movie Production (2024)"
-        / "Movie.Production.2024.1080p.mkv"
+        library / "Movies" / "Movie Production (2024)" / "Movie Production (2024).mkv"
     ).exists()
 
 
@@ -220,13 +217,8 @@ def test_config_drives_the_pipeline(tmp_path: Path) -> None:
     assert payload["rename"] is not None
 
 
-@pytest.mark.parametrize(
-    ("mode", "expected"),
-    [("copy", "allow-unsafe"), ("hardlink", "allow-unsafe")],
-)
-def test_unsafe_modes_name_the_override(
-    tmp_path: Path, mode: str, expected: str
-) -> None:
+@pytest.mark.parametrize("mode", ["copy", "hardlink"])
+def test_unsafe_modes_rename_without_an_override(tmp_path: Path, mode: str) -> None:
     source, library = _movie_source(tmp_path)
 
     code, payload, _ = _run(
@@ -244,5 +236,5 @@ def test_unsafe_modes_name_the_override(
     )
 
     assert code == 0
-    assert payload["rename"] is None
-    assert expected in payload["rename_skipped"]
+    assert payload["rename"] is not None
+    assert payload["rename"]["counts"]["renamed"] == 1
