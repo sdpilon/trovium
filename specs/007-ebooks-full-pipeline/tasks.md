@@ -236,16 +236,19 @@ tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
-export UV_NO_SYNC=1
-mkdir -p "$tmp/home" "$tmp/library" "$tmp/source" "$tmp/config" "$tmp/bin"
+mkdir -p "$tmp/work" "$tmp/home" "$tmp/library" "$tmp/source" "$tmp/config" "$tmp/bin"
+cp pyproject.toml README.md LICENSE uv.lock install.sh "$tmp/work/"
+cp -R src tools "$tmp/work/"
+cd "$tmp/work"
 export HOME="$tmp/home"
 export TROVIUM_BIN_DIR="$tmp/bin"
 export TROVIUM_CONFIG_FILE="$tmp/config/config.ini"
 export TROVIUM_STATE_HOME="$tmp/state"
 export TROVIUM_DATA_HOME="$tmp/data"
 export TROVIUM_CACHE_HOME="$tmp/cache"
+export UV_PROJECT_ENVIRONMENT="$tmp/project-venv"
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
-uv run --quiet python tools/release/build_bundle.py --local --version "$version" --out "$tmp/dist" >/dev/null
+uv run --frozen --quiet python tools/release/build_bundle.py --local --version "$version" --out "$tmp/dist" >/dev/null
 bundle=$(find "$tmp/dist" -name "trovium-$version-*.tar.gz" | head -1)
 bash install.sh --bundle "$bundle" --non-interactive \
   --library-root "$tmp/library" --source "$tmp/source" \
@@ -270,7 +273,6 @@ tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'kill "${srv:-0}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
-export UV_NO_SYNC=1
 mkdir -p "$tmp/downloads/Some Book" "$tmp/library"
 printf 'epub' > "$tmp/downloads/Some Book/Some.Book.epub"
 printf '<package><metadata><title>Some Book</title><creator>Jane Doe</creator><date>2020</date></metadata></package>' \
@@ -315,7 +317,7 @@ for _ in range(100):
         time.sleep(0.05)
 PY
 TROVIUM_CLIENT_USERNAME=admin TROVIUM_CLIENT_PASSWORD=secret \
-uv run --quiet trovium-run --client-url "http://127.0.0.1:$port" \
+.venv/bin/trovium-run --client-url "http://127.0.0.1:$port" \
   --library-root "$tmp/library" --profile books --json compact > "$tmp/run.json"
 jq -e '[.ingest.items[0].actions[].op] | all(. == "hardlink")' "$tmp/run.json" >/dev/null
 jq -e '.rename.counts.renamed == 1' "$tmp/run.json" >/dev/null
@@ -331,15 +333,14 @@ tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
-export UV_NO_SYNC=1
 mkdir -p "$tmp/source/Some Book" "$tmp/library"
 printf 'epub' > "$tmp/source/Some Book/Some.Book.epub"
 printf '<package><metadata><title>Some Book</title><creator>Jane Doe</creator><date>2020</date></metadata></package>' \
   > "$tmp/source/Some Book/metadata.opf"
-uv run --quiet trovium-ingest --profile books --source "$tmp/source" \
+.venv/bin/trovium-ingest --profile books --source "$tmp/source" \
   --library-root "$tmp/library" --mode copy --json compact > "$tmp/ingest.json"
-uv run --quiet trovium-rename --record "$tmp/ingest.json" --json compact > "$tmp/rename.json"
-uv run --quiet trovium-ingest --profile books --source "$tmp/source" \
+.venv/bin/trovium-rename --record "$tmp/ingest.json" --json compact > "$tmp/rename.json"
+.venv/bin/trovium-ingest --profile books --source "$tmp/source" \
   --library-root "$tmp/library" --mode copy --json compact > "$tmp/rerun.json"
 jq -e '.items[0].disposition == "already_handled"' "$tmp/rerun.json" >/dev/null
 test "$(find "$tmp/library" -name '*.epub' | wc -l)" -eq 1
@@ -351,7 +352,6 @@ tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'kill "${srv:-0}" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
-export UV_NO_SYNC=1
 mkdir -p "$tmp/downloads/Two Books" "$tmp/library"
 printf 'one' > "$tmp/downloads/Two Books/Book One.epub"
 printf 'two' > "$tmp/downloads/Two Books/Book Two.epub"
@@ -394,7 +394,7 @@ for _ in range(100):
         time.sleep(0.05)
 PY
 TROVIUM_CLIENT_USERNAME=admin TROVIUM_CLIENT_PASSWORD=secret \
-uv run --quiet trovium-run --client-url "http://127.0.0.1:$port" \
+.venv/bin/trovium-run --client-url "http://127.0.0.1:$port" \
   --library-root "$tmp/library" --profile books --json compact > "$tmp/multi.json"
 jq -e '.ingest.items[0].disposition == "unresolvable"' "$tmp/multi.json" >/dev/null
 jq -e '.ingest.items[0].reason | test("Book One.epub")' "$tmp/multi.json" >/dev/null
@@ -402,7 +402,7 @@ jq -e '.ingest.items[0].reason | test("Book Two.epub")' "$tmp/multi.json" >/dev/
 test -z "$(find "$tmp/library" -type f)"
 rm "$tmp/downloads/Two Books/Book Two.epub"
 TROVIUM_CLIENT_USERNAME=admin TROVIUM_CLIENT_PASSWORD=secret \
-uv run --quiet trovium-run --client-url "http://127.0.0.1:$port" \
+.venv/bin/trovium-run --client-url "http://127.0.0.1:$port" \
   --library-root "$tmp/library" --profile books --mode move --json compact > "$tmp/move.json"
 jq -e '.ingest.items[0].disposition == "error"' "$tmp/move.json" >/dev/null
 jq -e '.ingest.items[0].reason | test("multi-file torrent")' "$tmp/move.json" >/dev/null
