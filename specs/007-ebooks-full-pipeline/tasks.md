@@ -230,42 +230,10 @@ the spec is marked Complete.
 
 ## Acceptance
 
-```accept
-# verifies: SC-001 — a books install writes the adaptive default and an unknown profile is refused
-repo=$(pwd)
-tmp=$(mktemp -d)
-tmp=$(cd "$tmp" && pwd -P)
-trap 'rm -rf "$tmp"' EXIT
-export PYTHONDONTWRITEBYTECODE=1
-mkdir -p "$tmp/work" "$tmp/home" "$tmp/library" "$tmp/source" "$tmp/config" "$tmp/bin"
-cp pyproject.toml README.md LICENSE uv.lock install.sh "$tmp/work/"
-cp -R src tools "$tmp/work/"
-cd "$tmp/work"
-export HOME="$tmp/home"
-export TROVIUM_BIN_DIR="$tmp/bin"
-export TROVIUM_CONFIG_FILE="$tmp/config/config.ini"
-export TROVIUM_STATE_HOME="$tmp/state"
-export TROVIUM_DATA_HOME="$tmp/data"
-export TROVIUM_CACHE_HOME="$tmp/cache"
-version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
-"$repo/.venv/bin/python" tools/release/build_bundle.py --local --version "$version" --out "$tmp/dist" >/dev/null
-bundle=$(find "$tmp/dist" -name "trovium-$version-*.tar.gz" | head -1)
-bash install.sh --bundle "$bundle" --non-interactive \
-  --library-root "$tmp/library" --source "$tmp/source" \
-  --profile books --json compact >/dev/null
-grep -qx 'profile = books' "$TROVIUM_CONFIG_FILE"
-grep -qx 'mode = auto' "$TROVIUM_CONFIG_FILE"
-mkdir -p "$tmp/other/config"
-TROVIUM_CONFIG_FILE="$tmp/other/config/config.ini" \
-TROVIUM_BIN_DIR="$tmp/other/bin" \
-TROVIUM_STATE_HOME="$tmp/other/state" \
-TROVIUM_DATA_HOME="$tmp/other/data" \
-TROVIUM_CACHE_HOME="$tmp/other/cache" \
-  bash install.sh --bundle "$bundle" --non-interactive \
-  --library-root "$tmp/library" --source "$tmp/source" \
-  --profile nope --json compact >/dev/null 2>&1 && exit 1
-test ! -e "$tmp/other/config/config.ini"
-```
+SC-001 is covered by `tests/integration/deploy/test_install_local.py`
+(`test_install_writes_the_requested_profile_with_the_adaptive_default` and
+`test_install_refuses_an_unknown_profile_without_writing_config`), which runs
+on Linux in the Deploy workflow. The blocks below cover the runtime behaviors.
 
 ```accept
 # verifies: SC-002 — a folder ebook torrent hardlinks, carries sidecars, renames, and keeps seeding
