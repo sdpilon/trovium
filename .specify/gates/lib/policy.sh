@@ -6,6 +6,14 @@
 #   gates_policy_get <hook> <field>    # scalar (empty string on missing)
 #   gates_policy_list <hook> <field>   # one line per array element
 #   gates_validate_policy [file]       # returns 0 on pass, nonzero on fail
+#   gates_project_gate_names           # project gate names, key order
+#   gates_project_gate_get <name> <field>
+#   gates_project_gate_skip_at <name>  # compact JSON array or empty
+#   gates_project_gates_declared       # [{name, skip_at}] for parity
+#   gates_declared_skip <boundary> <skip_at-json>  # the boundary-skip
+#                                      # decision; feature 007 reuses it
+#   gates_cover_script / gates_cover_at / gates_cover_timeout
+#                                      # spec.cover (feature 007)
 #
 # Missing hook, missing field, or missing policy file all yield empty output
 # with exit 0 -- the loader is fail-open. Strict checks happen in
@@ -147,6 +155,136 @@ gates_policy_path_list() {
     return 0
 }
 
+# Project gates (feature 006): hooks.verify-quality.gates, an object keyed
+# by gate name whose key order is the run order. A null gate is a removed
+# one (a contract overlay drops a baseline gate so) and is not listed.
+# Fail-open like the other accessors; gates_validate_policy is the strict
+# check, and verify.sh refuses an invalid policy before reading these.
+gates_project_gate_names() { # one name per line, in key order
+    local file
+    file="$(gates_policy_file)"
+    [[ -f "$file" ]] || return 0
+    jq -r '
+        (.hooks["verify-quality"].gates // {})
+        | if type == "object" then to_entries[] | select(.value != null) | .key
+          else empty end
+    ' "$file" 2>/dev/null || true
+}
+
+gates_project_gate_get() { # <name> <field>: scalar, empty when missing
+    local file
+    [[ -n "${1:-}" && -n "${2:-}" ]] || return 0
+    file="$(gates_policy_file)"
+    [[ -f "$file" ]] || return 0
+    jq -r --arg n "$1" --arg f "$2" '
+        ((.hooks["verify-quality"].gates // {})[$n] // {})[$f]
+        | if . == null or type == "array" or type == "object" then "" else tostring end
+    ' "$file" 2>/dev/null || true
+}
+
+gates_project_gate_skip_at() { # <name>: compact JSON array, empty when absent
+    local file
+    [[ -n "${1:-}" ]] || return 0
+    file="$(gates_policy_file)"
+    [[ -f "$file" ]] || return 0
+    jq -c --arg n "$1" '
+        ((.hooks["verify-quality"].gates // {})[$n] // {}).skip_at
+        | if type == "array" then . else empty end
+    ' "$file" 2>/dev/null || true
+}
+
+# The declared gate set for the parity gate (research R7): a compact JSON
+# array of {"name", "skip_at"} in key order, read from the policy afresh
+# (not from the list verify.sh ran). Unlike the accessors above it fails
+# (status 1, no output) when the policy cannot be read, so parity fails
+# closed instead of comparing against an empty set.
+gates_project_gates_declared() {
+    local file
+    file="$(gates_policy_file)"
+    [[ -f "$file" ]] || return 1
+    jq -ce '
+        (.hooks["verify-quality"].gates // {})
+        | if type == "object" then
+            [ to_entries[] | select(.value != null)
+              | { name: .key, skip_at: (.value.skip_at // []) } ]
+          else [] end
+    ' "$file" 2>/dev/null
+}
+
+# The one boundary-skip decision (research R6): an item whose declaration
+# <skip_at-json> (a JSON array, or empty for none) names <boundary> does
+# not run there. Prints "skipped by declaration at <boundary>" and returns
+# 0 when skipped; returns 1 otherwise. Only agent and git can be skipped:
+# ci (CI runs the full policy, constitution Principle III), none (a run
+# without --boundary runs everything) and any other value return 1 even if
+# listed. Project gates use it now; feature 007 reuses it for accept
+# blocks, so both report a skip in the same words.
+gates_declared_skip() { # <boundary> <skip_at-json>
+    local boundary="${1:-}" list="${2:-}"
+    case "$boundary" in
+        agent | git) ;;
+        *) return 1 ;;
+    esac
+    [[ -n "$list" ]] || return 1
+    jq -e --arg b "$boundary" 'type == "array" and any(.[]; . == $b)' \
+        >/dev/null 2>&1 <<<"$list" || return 1
+    printf 'skipped by declaration at %s\n' "$boundary"
+}
+
+# The covering script (feature 007, spec.cover). Fail-open like the other
+# accessors: the validator is the strict check.
+gates_cover_script() { # the declared path, empty when none
+    gates_cover_field '.script | if type == "string" then . else empty end'
+}
+
+gates_cover_at() { # compact JSON array, empty when none
+    gates_cover_field '.at | if type == "array" then tojson else empty end'
+}
+
+gates_cover_timeout() { # seconds, default 30
+    local t
+    t="$(gates_cover_field '.timeout_s | if type == "number" then tostring else empty end')"
+    printf '%s\n' "${t:-30}"
+}
+
+# Is the declared script <path> a regular file inside <root> (research R5)?
+# Symlinks are followed, and one whose target leaves the project counts as
+# outside. Returns 0 when it is; otherwise prints why on stdout, returns 1.
+gates_cover_script_check() { # <root> <path>
+    local root real p="$2" dir t n=0
+    root="$(cd "$1" 2>/dev/null && pwd -P)" || { echo "project root not found"; return 1; }
+    p="$root/$p"
+    while [[ -L "$p" && $n -lt 40 ]]; do
+        t="$(readlink "$p" 2>/dev/null)" || break
+        [[ "$t" == /* ]] || t="${p%/*}/$t"
+        p="$t"
+        n=$((n + 1))
+    done
+    if [[ ! -e "$p" && ! -L "$p" ]]; then
+        echo "not found"
+        return 1
+    fi
+    dir="$(cd "${p%/*}" 2>/dev/null && pwd -P)" || { echo "not found"; return 1; }
+    real="$dir/${p##*/}"
+    if [[ "$real" != "$root"/* ]]; then
+        echo "resolves outside the project"
+        return 1
+    fi
+    if [[ -L "$real" || ! -f "$real" ]]; then
+        echo "not a regular file"
+        return 1
+    fi
+    return 0
+}
+
+gates_cover_field() { # <jq filter on .spec.cover>
+    local file
+    file="$(gates_policy_file)"
+    [[ -f "$file" ]] || return 0
+    jq -r "(.spec.cover // {}) | if type == \"object\" then ($1) else empty end" \
+        "$file" 2>/dev/null || true
+}
+
 # Protected-change trailer switch (git.protected_change_trailer, default on).
 gates_protected_trailer_enabled() {
     [[ "$(gates_policy_section_get git protected_change_trailer)" != "false" ]]
@@ -201,7 +339,10 @@ gates_policy_at_rev() { # <rev> <dest>
 # own rules in hooks.local.d (#95) and the policy-contract artifacts, which
 # decide what is enforced exactly like policy.json (#137). Changing one is a
 # reviewed change with a Protected-Change trailer, like any
-# protected_files.extra entry. One entry per line.
+# protected_files.extra entry. One entry per line. gates_protected_list adds
+# a declared covering script (spec.cover.script, feature 007) of every
+# policy it reads next to these: it decides which accept blocks are
+# skipped, so it is protected like the policy.
 GATES_BUILTIN_PROTECTED=".specify/gates/hooks.local.d/**
 .specify/gates/baseline.json
 .specify/gates/baseline.lock.json
@@ -211,13 +352,15 @@ GATES_BUILTIN_PROTECTED=".specify/gates/hooks.local.d/**
 # plus the worktree policy when called with no revs (worktree + HEAD). Reading
 # the committed copy means a staged policy.json that drops its own protection
 # is still judged by the protection it removes (issue #47). The built-in
-# entries above always come first.
+# entries above always come first, then the covering script each of those
+# policies declares (gates_cover_protected), whatever extra says.
 # shellcheck disable=SC2120  # revs are passed by protected-range.sh
 gates_protected_list() { # [rev...]
     local tmp rev
     local -a revs=("$@")
     {
         printf '%s\n' "$GATES_BUILTIN_PROTECTED"
+        gates_cover_protected "$@"
         if [[ "${#revs[@]}" -eq 0 ]]; then
             gates_policy_section_list protected_files extra
             revs=(HEAD)
@@ -232,6 +375,31 @@ gates_protected_list() { # [rev...]
             rm -f "$tmp"
         fi
     } | awk 'NF && !seen[$0]++'
+}
+
+# The spec.cover.script paths of the policies committed at <rev>..., plus
+# the worktree policy when called with no revs (worktree + HEAD), one per
+# line, normalized as git names paths (./a, a//b and a/./b are a, a/b).
+# Used by gates_protected_list and by pr-check with the trailer rule off.
+# shellcheck disable=SC2120  # revs are passed by pr-check.sh
+gates_cover_protected() { # [rev...]
+    local tmp rev
+    local -a revs=("$@")
+    {
+        if [[ "${#revs[@]}" -eq 0 ]]; then
+            gates_cover_script
+            revs=(HEAD)
+        fi
+        tmp="$(mktemp 2>/dev/null || mktemp -t gates-policy)" || tmp=""
+        if [[ -n "$tmp" ]]; then
+            for rev in "${revs[@]}"; do
+                if gates_policy_at_rev "$rev" "$tmp"; then
+                    GATES_POLICY_FILE="$tmp" gates_cover_script
+                fi
+            done
+            rm -f "$tmp"
+        fi
+    } | sed -e 's#//*#/#g' -e 's#/\(\./\)*#/#g' -e 's#^\(\./\)*##' | awk 'NF && !seen[$0]++'
 }
 
 # Filter paths on stdin down to those matching a protected entry in
@@ -329,8 +497,16 @@ gates_validate_policy() {
         def top_keys: ["_comment", "$schema", "extends", "hooks", "protected_files", "git", "attestation", "spec"];
         def allowed_keys: [
             "include","exclude","orchestrator","severity",
-            "on_missing_runner","on_missing_tests","custom_command"
+            "on_missing_runner","on_missing_tests","custom_command",
+            "gates","gate_timeout_s","test_severity"
         ];
+        # Project gates (feature 006): keys of verify-quality only.
+        def vq_keys: ["gates", "gate_timeout_s", "test_severity"];
+        def gate_keys: ["command", "severity", "timeout_s", "skip_at"];
+        # Reserved: the names of the built-in gates and report lines.
+        def reserved_gates: ["prettier", "markdownlint", "shellcheck", "task-lint", "task-test",
+            "custom", "spec", "contract", "parity", "policy", "lock", "constitution"];
+        def limit_s: type == "number" and floor == . and . >= 1 and . <= 86400;
         # on_missing_runner/on_missing_tests: deprecated, read by no gate;
         # still validated so existing policies pass (doctor flags them, #112).
         def orch_values:   ["none","task","custom"];
@@ -341,6 +517,61 @@ gates_validate_policy() {
             if ($v | type) != "array" then ["\($what) must be an array of strings"]
             elif any($v[]; type != "string") then ["\($what) entries must be strings"]
             else [] end;
+        # Each error names its key path (verify-quality.gates.<name>.<key>).
+        # A null gate is a removed one, as for hooks (a contract overlay
+        # drops a baseline gate with null).
+        def vq_errors($h; $v):
+            ( if ($v | has("gate_timeout_s")) and ($v.gate_timeout_s | limit_s | not)
+                then "\($h).gate_timeout_s: must be an integer from 1 to 86400"
+              else empty end ),
+            ( if ($v | has("test_severity")) and (sev_values | index($v.test_severity)) == null
+                then "\($h).test_severity: invalid value \($v.test_severity | tojson) (allowed: \(sev_values | join(", ")))"
+              else empty end ),
+            ( if ($v | has("gates")) | not then empty
+              elif ($v.gates | type) != "object"
+                then "\($h).gates: must be an object keyed by gate name"
+              else
+                $v.gates | to_entries[] | select(.value != null) | . as $g
+                | "\($h).gates.\($g.key)" as $p
+                | ( if ($g.key | test("^[a-z0-9][a-z0-9_-]{0,39}$") | not)
+                      then "\($p): invalid gate name (allowed: lowercase letters, digits, - and _, starting with a letter or digit, at most 40 characters)"
+                    elif (reserved_gates | index($g.key)) != null
+                      then "\($p): \"\($g.key)\" is a reserved gate name (a built-in gate)"
+                    else empty end ),
+                  ( if ($g.value | type) != "object" then "\($p): must be an object"
+                    else
+                      ( $g.value | keys[] | select(IN(gate_keys[]) | not)
+                        | "\($p): unknown field \"\(.)\"" ),
+                      ( if ($g.value | has("command")) | not
+                          then "\($p): missing required field \"command\""
+                        elif ($g.value.command | type) != "string" or ($g.value.command | length) == 0
+                          then "\($p).command: must be a non-empty string"
+                        else empty end ),
+                      ( if ($g.value | has("severity")) and (sev_values | index($g.value.severity)) == null
+                          then "\($p).severity: invalid value \($g.value.severity | tojson) (allowed: \(sev_values | join(", ")))"
+                        else empty end ),
+                      ( if ($g.value | has("timeout_s")) and ($g.value.timeout_s | limit_s | not)
+                          then "\($p).timeout_s: must be an integer from 1 to 86400"
+                        else empty end ),
+                      ( if ($g.value | has("skip_at")) | not then empty
+                        else
+                          $g.value.skip_at as $s
+                          | if ($s | type) != "array"
+                              then "\($p).skip_at: must be an array of boundaries (allowed: agent, git)"
+                            elif ($s | length) == 0
+                              then "\($p).skip_at: must not be empty"
+                            else
+                              ( $s[] | select(. == "ci")
+                                | "\($p).skip_at: \"ci\" is refused: CI runs the full policy (constitution, Principle III)" ),
+                              ( $s[] | select(. != "ci" and . != "agent" and . != "git")
+                                | "\($p).skip_at: invalid boundary \(tojson) (allowed: agent, git)" ),
+                              ( if ($s | length) != ($s | unique | length)
+                                  then "\($p).skip_at: duplicate entries"
+                                else empty end )
+                            end
+                        end )
+                    end )
+              end );
         # A null hook is a removed one (a contract overlay drops a baseline
         # hook with null) and reads as absent; any other non-object is named.
         def hook_errors:
@@ -384,14 +615,52 @@ gates_validate_policy() {
                     elif ($e.value.custom_command | length) == 0
                       then "\($e.key): orchestrator \"custom\" requires non-empty \"custom_command\""
                     else empty end
-                  else empty end ) )
+                  else empty end ),
+                ( if $e.key == "verify-quality" then vq_errors($e.key; $e.value)
+                  else vq_keys[] as $k
+                    | select($e.value | has($k))
+                    | "\($e.key): \"\($k)\" is allowed only under verify-quality"
+                  end ) )
               end;
         def git_keys: ["block_main_commits", "conventional_commits", "forbid_ai_isms", "protected_change_trailer", "block_bulk_staging", "ai_branding"];
         def git_bool_keys: ["block_main_commits", "conventional_commits", "forbid_ai_isms", "protected_change_trailer", "block_bulk_staging"];
         def brand_keys: ["terms", "allow_phrases"];
         def att_keys: ["enabled", "max_records", "parity"];
         def parity_values: ["error", "warning", "off"];
-        def spec_keys: ["enabled", "severity", "include", "exclude", "timeout_s", "snapshot_exclude"];
+        def spec_keys: ["enabled", "severity", "include", "exclude", "timeout_s", "snapshot_exclude", "cover"];
+        # The covering script (feature 007): each error names spec.cover.<key>.
+        # Only the shape of the path is checked here; verify.sh refuses a run whose
+        # declared script is not a regular file inside the project.
+        def cover_keys: ["script", "at", "timeout_s"];
+        def cover_errors($c):
+            if ($c | type) != "object" then ["spec.cover: must be an object"]
+            else
+              [ $c | keys[] | select(IN(cover_keys[]) | not) | "spec.cover.\(.): unknown field" ]
+              + ( if ($c | has("script")) | not then ["spec.cover.script: missing required field"]
+                  elif ($c.script | type) != "string" or ($c.script | length) == 0
+                    then ["spec.cover.script: must be a non-empty string"]
+                  elif ($c.script | startswith("/"))
+                    then ["spec.cover.script: must be a project-relative path, not absolute"]
+                  elif any($c.script | split("/")[]; . == "..")
+                    then ["spec.cover.script: must not contain a .. segment"]
+                  else [] end )
+              + ( if ($c | has("at")) | not then ["spec.cover.at: missing required field (allowed: agent, git)"]
+                  elif ($c.at | type) != "array"
+                    then ["spec.cover.at: must be an array of boundaries (allowed: agent, git)"]
+                  elif ($c.at | length) == 0 then ["spec.cover.at: must not be empty"]
+                  else
+                    [ $c.at[] | select(. == "ci")
+                      | "spec.cover.at: \"ci\" is refused: CI runs the full policy (constitution, Principle III)" ]
+                    + [ $c.at[] | select(. != "ci" and . != "agent" and . != "git")
+                        | "spec.cover.at: invalid boundary \(tojson) (allowed: agent, git)" ]
+                    + ( if ($c.at | length) != ($c.at | unique | length)
+                          then ["spec.cover.at: duplicate entries"] else [] end )
+                  end )
+              + ( if ($c | has("timeout_s")) and ($c.timeout_s
+                      | (type == "number" and floor == . and . >= 1 and . <= 300) | not)
+                    then ["spec.cover.timeout_s: must be an integer from 1 to 300"]
+                  else [] end )
+            end;
         def spec_sev_values: ["error", "warning"];
         def ext_keys: ["source", "version", "file"];
         def pos_int: type == "number" and floor == . and . >= 1;
@@ -471,6 +740,7 @@ gates_validate_policy() {
                     + ( if ($s | has("timeout_s")) and ($s.timeout_s | pos_int | not)
                           then ["spec: timeout_s must be an integer >= 1"]
                         else [] end )
+                    + ( if ($s | has("cover")) then cover_errors($s.cover) else [] end )
                   end
             else [] end;
         def ext_errors:

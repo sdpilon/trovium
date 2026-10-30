@@ -60,14 +60,11 @@ run_phase "ruff format" uv run ruff format --check .
 run_phase "mypy" uv run mypy .
 run_phase "pytest" env PYTHONUNBUFFERED=1 uv run pytest
 
-# Markdown, file formatting, and shell. The gates orchestrator routes a
-# "none" policy through its per-tool walk; with "custom" it runs only this
-# command, so the walk lives here — calling the same dispatcher keeps the
-# exclude lists single-sourced instead of duplicated (constitution XVIII).
-for tool in prettier markdownlint shellcheck; do
-    run_phase "$tool" bash .specify/gates/lib/formatter-dispatch.sh --check \
-        --tool "$tool" --project-root .
-done
+# Markdown, file formatting, and shell. The gates runtime's built-in walk is
+# the stable entry point for the policy-enabled tools (spec-gates 0.5.0); it
+# keeps the exclude lists single-sourced and reports each tool on its own line
+# (constitution XVIII).
+run_phase "built-in walk" bash .specify/gates/verify.sh --walk
 
 say ""
 say "==> gate passed ($((SECONDS - GATE_STARTED))s)"

@@ -4,3 +4,7 @@
 # generated OpenCode commands. Hand-written files under .opencode/plugins/ stay
 # in scope.
 .opencode/commands/
+# spec-gates: vendored and projected files; upgrades overwrite them.
+.specify/gates/
+.specify/extensions/
+.claude/hooks/gates/

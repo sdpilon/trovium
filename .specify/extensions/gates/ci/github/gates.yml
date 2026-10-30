@@ -36,17 +36,22 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q jq
-          # Install shellcheck at the version pinned in .tool-versions, from
-          # the upstream release for this runner's architecture, refused
-          # unless it matches the checksums in
-          # .specify/gates/shellcheck.sha256 (apt ships an older release
+          # Install shellcheck at the version the project pins (mise.lock,
+          # mise.toml or .tool-versions), from the upstream release for this
+          # runner's architecture, refused unless it matches the checksums
+          # in .specify/gates/shellcheck.sha256 (apt ships an older release
           # whose findings differ; the parity gate fails on the drift).
-          # Without a pin, the distro package is installed instead:
-          # unpinned, so CI and local runs may disagree.
-          if grep -qs '^shellcheck[[:space:]]' .tool-versions; then
+          # Without a pin (--pin exits 2), the distro package is installed
+          # instead: unpinned, so CI and local runs may disagree. Pins that
+          # conflict, or a mise file it cannot read, fail the step.
+          pin=0
+          bash .specify/gates/install-shellcheck.sh --pin || pin=$?
+          if [ "$pin" -eq 0 ]; then
             bash .specify/gates/install-shellcheck.sh
-          else
+          elif [ "$pin" -eq 2 ]; then
             sudo apt-get install -y -q shellcheck
+          else
+            exit "$pin"
           fi
           # Lockfile-pinned linters keep CI on the versions local runs use
           # (the parity gate compares them); fall back to the latest only
@@ -73,11 +78,15 @@ jobs:
       # judges it. A base without pr-check.sh (the PR adopting spec-gates)
       # runs the PR's own copy. This workflow file still comes from the PR:
       # protect it and .specify/gates/** with branch protection + CODEOWNERS.
+      # Dependabot and Renovate descriptions quote upstream release notes
+      # (emoji, third-party prose) nobody here wrote, so the description of
+      # a PR they open is not checked; its title, protected changes and
+      # secrets are. Add your own bots' logins to the list.
       - name: Check the pull request (text, protected changes, secrets)
         if: github.event_name == 'pull_request'
         env:
           GATES_PR_TITLE: ${{ github.event.pull_request.title }}
-          GATES_PR_BODY: ${{ github.event.pull_request.body }}
+          GATES_PR_BODY: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]"]'), github.event.pull_request.user.login) && github.event.pull_request.body || '' }}
         run: |
           base="origin/$GITHUB_BASE_REF"
           if git cat-file -e "$base:.specify/gates/pr-check.sh" 2>/dev/null; then

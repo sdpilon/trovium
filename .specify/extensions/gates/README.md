@@ -44,10 +44,50 @@ enforcement half lives on here.
 
 **The parity property:** if the agent boundary passed, the git boundary
 passes; if the git boundary passed, CI passes. Every boundary runs the
-same `verify.sh` with the same policy — `tests/test-parity.sh` asserts it:
-identical results at every boundary, and no boundary re-implements the gate.
+same `verify.sh` with the same policy, and CI runs all of it. An earlier
+boundary runs less only where the policy says so, and names what it skipped
+(constitution, Principle III). `tests/test-parity.sh` asserts it: with
+nothing declared, identical results at every boundary, and no boundary
+re-implements the gate.
 A fourth, server-side boundary (branch protection requiring the CI check) is
 available via `/speckit.gates.ci github --protect`.
+
+**Your own checks, as gates.** Lint, type checks, tests with a coverage
+floor or a manifest validator join the built-in checks as named gates in
+the policy, each reported on its own and run under a time limit. A slow
+one can stay out of the Stop hook; CI still runs it, and the parity gate
+proves it did:
+
+```json
+"verify-quality": {
+  "orchestrator": "none",
+  "severity": "error",
+  "gates": {
+    "lint": { "command": "npm run -s lint" },
+    "test": { "command": "npm test -- --coverage", "timeout_s": 1200 },
+    "build": { "command": "npm run -s build", "skip_at": ["agent"] }
+  }
+}
+```
+
+`skip_at` takes `agent` and `git`, never `ci`. Details in
+[How it works](docs/how-it-works.md#one-entrypoint).
+
+**Don't repeat what the run already proved.** `spec.cover` names a
+protected project script that may vouch for an accept block at the agent
+and git boundaries ("covered: the test gate passed this package"); the
+block is then not run and is named as covered in every report. CI never
+asks it, the parity gate fails CI if anything was covered there, and a
+canary proves it. `GATES_TIMELINE` and `GATES_PROGRESS` write a line as
+each gate and block runs, for CI log sections and a live terminal view;
+a commit from a terminal shows them automatically. Details in
+[How it works](docs/how-it-works.md#spec-conformance-acceptance-criteria-as-executable-gates).
+
+One gate run holds a working tree at a time (`.specify/gates/.lock`): a
+Stop-hook run that finds a commit's run in progress skips and lets the
+session end, while a git or CI run waits for the other one, up to
+`GATES_LOCK_WAIT_S` seconds (default 600). Details in
+[How it works](docs/how-it-works.md#one-entrypoint).
 
 ## Provable enforcement
 
@@ -60,7 +100,7 @@ self-evidencing:
   in `--json`: the policy's SHA-256, and per gate the resolved binary,
   detected version, lockfile pin, candidate vs checked file counts,
   result, and duration. Evidence, never file contents.
-- **Canaries** — `canary.sh` plants 16 known violations in disposable
+- **Canaries** — `canary.sh` plants 18 known violations in disposable
   sandboxes (dirty and lint-failing files, dangerous tool calls with and
   without jq, staged secrets, undeclared protected changes, branding,
   failing accept blocks, a tampered effective policy, and more) and requires
@@ -120,7 +160,8 @@ Enforcement follows the feature's own completion claim, read from
   changing the exit code.
 - **`**Status**: Complete`** — the claim is enforced. Any unchecked
   `- [ ]` task or failing accept block fails the run, naming the feature,
-  the task or criterion, and the cause (exit code, `timeout after <N>s`,
+  the task or criterion, and the cause (exit code, `timeout after <N>s`
+  with the 1-minute load average where it can be read,
   or a mutation — blocks are read-only by contract and never
   auto-reverted). The read-only check covers the working tree, git
   config and hooks, `HEAD` and refs, and gitignored files; work in a
@@ -143,7 +184,9 @@ section, with its defaults:
 read-only check skips, for a cache another process writes while blocks
 run; `cache/` covers the directory and everything under it, and a pattern
 of only `*`, `?` and `/` (which would match every path) makes the policy
-invalid.
+invalid. Writes inside nested repositories and worktrees (a directory
+with its own `.git`, such as agents' worktrees under `.claude/worktrees/`)
+are skipped without it.
 
 ## Policy as a versioned contract
 
@@ -267,11 +310,16 @@ its enforcement frontmatter — one registry, two consumers.
   A linter the policy enables but the host lacks does not block anything
   by itself: every boundary passes with that gate reported `[skipped]`.
   `doctor` and the canary suite fail on it, and the CI templates run the
-  canary suite, so a CI job without the linter fails.
+  canary suite, so a CI job without the linter fails. A new clone or
+  worktree has no `node_modules`: install there (`npm ci`) before its
+  first commit, or a custom command or accept block that calls a linter
+  fails the commit.
 - **shellcheck** if you lint shell. Its findings change between releases
   (0.9.0 reports SC2015 where 0.11.0 does not), so declare the version in
-  `.tool-versions` (`shellcheck 0.11.0`) and install that one everywhere —
-  the parity gate reads it and fails any boundary that drifts. The CI
+  `mise.toml` (`[tools]` `shellcheck = "0.11.0"`, or the version
+  `mise.lock` locks) or `.tool-versions` (`shellcheck 0.11.0`) and install
+  that one everywhere — the parity gate reads it and fails any boundary
+  that drifts, or two sources that pin different versions. The CI
   templates install exactly that version, checksum-verified, with
   `bash .specify/gates/install-shellcheck.sh` (Linux and macOS, x86_64
   and aarch64); for a version spec-gates ships no checksums for, run it
@@ -351,7 +399,9 @@ cosign verify-blob --bundle "$D/gates-$V.zip.sigstore.json" \
 
 # 3. Swap the installed extension (policy.json stays). Run these as two
 #    commands: read the remove output first, and run add only if it
-#    reports the extension removed without an error.
+#    reports the extension removed without an error. add asks to confirm
+#    the URL source; in a script or an agent session, answer it with
+#    `yes | specify extension add ...` (unanswered, it aborts with exit 1).
 specify extension remove gates --keep-config --force
 specify extension add gates --from "$U/gates-$V.zip"
 
@@ -374,6 +424,16 @@ finishes the upgrade. A runtime projected by 0.3.x has no
 command, then step 5. Scripts that run `verify.sh` without `--boundary`
 still work, with a deprecation warning; step 5 and doctor name them, so
 add `--boundary agent|git|ci` to each.
+
+`add` asks "Continue with installation? [y/N]" for a URL source. Run
+without a terminal (a script, an agent session), it reads no answer,
+prints "Aborted." and exits 1; pipe `yes` into it there.
+
+If your `speckit-gates-*` skills were last rendered by `specify
+integration upgrade` (`metadata.source: extension:gates`), some Spec Kit
+CLI versions render them in the older format on `add`, and the upgrade
+diff reverts the format. Run `specify integration upgrade --force` after
+the `add`, then re-apply any deliberate edits to managed files.
 
 **Branches still on 0.3.x, and rolling back.** The git hook stubs in
 `.git/hooks` are shared by every branch and worktree of the clone, and

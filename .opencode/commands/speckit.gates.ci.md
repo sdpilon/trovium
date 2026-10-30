@@ -72,14 +72,16 @@ create`; GitLab: `glab repo create` or the web UI; Jenkins: the SCM
    - node linters with `npm ci` from the lockfile (latest only when the
      repository pins nothing);
    - shellcheck with `bash .specify/gates/install-shellcheck.sh`, which
-     installs the version pinned in `.tool-versions` for the runner's OS
-     and architecture (linux and macOS, x86_64 and aarch64) and refuses a
-     download that does not match `.specify/gates/shellcheck.sha256`.
-     Without a `shellcheck` line in `.tool-versions` the templates install
-     the distro package instead (GitHub, GitLab) or use the agent's own
-     (Jenkins): unpinned, so offer to add the pin. spec-gates ships
-     checksums for the version it pins; for another version, set it in
-     `.tool-versions` and run
+     installs the pinned version (from `mise.lock`, `mise.toml` or
+     `.tool-versions`, the sources the parity gate reads) for the runner's
+     OS and architecture (linux and macOS, x86_64 and aarch64) and refuses
+     a download that does not match `.specify/gates/shellcheck.sha256`.
+     The templates ask `install-shellcheck.sh --pin` first: without a pin
+     (exit 2) they install the distro package instead (GitHub, GitLab) or
+     use the agent's own (Jenkins): unpinned, so offer to add the pin.
+     Conflicting pins or an unreadable mise file fail the job. spec-gates
+     ships checksums for the version it pins; for another version, set
+     the pin and run
      `bash .specify/gates/install-shellcheck.sh --update`, which reads the
      release's published digests, checks them against a download, and
      writes `.specify/gates/shellcheck.local.sha256` (commit it; upgrades
@@ -137,7 +139,11 @@ create`; GitLab: `glab repo create` or the web UI; Jenkins: the SCM
      `GATES_GITLAB_TOKEN` (offer to set it as a masked CI/CD variable
      holding a `read_api` token) or `CI_JOB_TOKEN`. A truncated
      description it cannot fetch fails the job. Before 16.7 without a
-     token, only the title is checked, and the job prints a notice.
+     token, only the title is checked, and the job prints a notice. A
+     draft MR's title marker (`Draft:`, `[Draft]`, `(Draft)`, `WIP:`,
+     `[WIP]`, any case, at the start and followed by a blank) is dropped
+     before the title is checked, since GitLab removes it when the MR is
+     marked ready.
    - jenkins: only the title is available (`CHANGE_TITLE`); the
      description is not checked.
 
@@ -159,7 +165,10 @@ GitHub: a step in the job that runs `verify.sh --boundary ci`, so the
 required `gates` check covers it. That job checks out with
 `fetch-depth: 0` (without full history the base revision cannot be
 read), and the workflow runs on `pull_request` with `edited` among its
-types.
+types. A PR opened by Dependabot or Renovate is checked without its
+description, which quotes upstream release notes nobody in the project
+wrote; its title, protected changes and secrets are still checked. Add
+other bots' logins to the list in `GATES_PR_BODY`.
 
 ```yaml
 # spec-gates pr step (GitHub): add under steps: of the job that runs
@@ -170,7 +179,7 @@ types.
   if: github.event_name == 'pull_request'
   env:
     GATES_PR_TITLE: ${{ github.event.pull_request.title }}
-    GATES_PR_BODY: ${{ github.event.pull_request.body }}
+    GATES_PR_BODY: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]"]'), github.event.pull_request.user.login) && github.event.pull_request.body || '' }}
   run: |
     base="origin/$GITHUB_BASE_REF"
     if git cat-file -e "$base:.specify/gates/pr-check.sh" 2>/dev/null; then
