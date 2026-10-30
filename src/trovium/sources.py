@@ -38,6 +38,7 @@ class Candidate:
     source: Source
     files: tuple[Path, ...]
     root: Path | None = None
+    unresolved_reason: str | None = None
     completion: CompletionState = CompletionState.COMPLETE
     client_state: ClientState = ClientState.NONE
     client_category: str | None = None
@@ -78,25 +79,48 @@ def client_candidates(
     ],
     profile: Profile,
 ) -> tuple[Candidate, ...]:
-    """Adapt adapter-reported entries to candidates (one torrent, one item)."""
-    return tuple(
-        Candidate(
-            name=name,
-            source=Source.CLIENT,
-            files=profile.collect_files(content_path),
-            root=root_path,
-            completion=completion,
-            client_state=client_state,
-            client_category=client_category,
-            client_hash=torrent_hash,
+    """Adapt adapter-reported entries to candidates (one torrent, one item).
+
+    A completed torrent is expanded through the profile's grouping so sidecars
+    travel with their book. Groups that share one name are formats of the same
+    item and merge; distinct groups make the torrent unresolvable rather than
+    splitting it across client actions.
+    """
+    candidates: list[Candidate] = []
+    for (
+        torrent_hash,
+        name,
+        content_path,
+        root_path,
+        completion,
+        client_state,
+        client_category,
+    ) in entries:
+        groups = profile.groups(content_path)
+        unresolved: str | None = None
+        if len(groups) == 1:
+            files = groups[0].files
+        elif groups and all(group.name == groups[0].name for group in groups):
+            files = tuple(path for group in groups for path in group.files)
+        elif groups:
+            files = tuple(path for group in groups for path in group.files)
+            names = ", ".join(
+                group.files[0].name if group.files else group.name for group in groups
+            )
+            unresolved = f"torrent holds several items: {names}"
+        else:
+            files = ()
+        candidates.append(
+            Candidate(
+                name=name,
+                source=Source.CLIENT,
+                files=files,
+                root=root_path,
+                unresolved_reason=unresolved,
+                completion=completion,
+                client_state=client_state,
+                client_category=client_category,
+                client_hash=torrent_hash,
+            )
         )
-        for (
-            torrent_hash,
-            name,
-            content_path,
-            root_path,
-            completion,
-            client_state,
-            client_category,
-        ) in entries
-    )
+    return tuple(candidates)

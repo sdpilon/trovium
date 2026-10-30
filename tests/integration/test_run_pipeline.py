@@ -78,3 +78,76 @@ def test_books_pipeline_from_a_config_file(tmp_path: Path) -> None:
         / "Embedded Title (2020)"
         / "Jane Doe - Embedded Title (2020).epub"
     ).exists()
+
+
+def test_auto_mode_moves_and_renames_a_disk_book(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    folder = source / "Some Book"
+    folder.mkdir(parents=True)
+    (folder / "Some.Book.epub").write_bytes(b"epub-bytes")
+    (folder / "metadata.opf").write_text(
+        "<package><metadata><title>Some Book</title>"
+        "<creator>Jane Doe</creator><date>2020</date></metadata></package>",
+        encoding="utf-8",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+
+    payload = _run(
+        [
+            "--source",
+            str(source),
+            "--library-root",
+            str(library),
+            "--profile",
+            "books",
+            "--json",
+            "compact",
+        ]
+    )
+
+    item = payload["ingest"]["items"][0]
+    assert item["actions"][0]["op"] == "move"
+    assert payload["rename"]["counts"]["renamed"] == 1
+    assert (
+        library
+        / "Books"
+        / "Jane Doe"
+        / "Some Book (2020)"
+        / "Jane Doe - Some Book (2020).epub"
+    ).exists()
+    assert not (folder / "Some.Book.epub").exists()
+
+
+def test_copy_then_rename_then_rerun_is_already_handled(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    folder = source / "Some Book"
+    folder.mkdir(parents=True)
+    (folder / "Some.Book.epub").write_bytes(b"epub-bytes")
+    (folder / "metadata.opf").write_text(
+        "<package><metadata><title>Some Book</title>"
+        "<creator>Jane Doe</creator><date>2020</date></metadata></package>",
+        encoding="utf-8",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    argv = [
+        "--source",
+        str(source),
+        "--library-root",
+        str(library),
+        "--profile",
+        "books",
+        "--mode",
+        "copy",
+        "--json",
+        "compact",
+    ]
+
+    first = _run(argv)
+
+    assert first["rename"]["counts"]["renamed"] == 1
+    second = _run(argv)
+
+    assert second["ingest"]["items"][0]["disposition"] == "already_handled"
+    assert len(list(library.rglob("*.epub"))) == 1

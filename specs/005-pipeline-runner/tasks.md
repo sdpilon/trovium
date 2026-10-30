@@ -74,7 +74,7 @@ test -z "$(find "$tmp/library" -type f -print -quit)"
 ```
 
 ```accept
-# verifies: SC-004 — copy mode places files and skips rename by default
+# verifies: SC-004 — copy mode places files and renames them by default
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
@@ -82,8 +82,8 @@ mkdir -p "$tmp/source/Movie.Production.2024.1080p" "$tmp/library"
 printf x > "$tmp/source/Movie.Production.2024.1080p/Movie.Production.2024.1080p.mkv"
 uv run --quiet trovium-run --source "$tmp/source" --library-root "$tmp/library" \
   --mode copy --json compact > "$tmp/run.json"
-jq -e '.ingest.counts.ingested == 1 and .rename == null and (.rename_skipped | length > 0)' "$tmp/run.json" >/dev/null
-test -f "$tmp/library/Movies/Movie Production (2024)/Movie.Production.2024.1080p.mkv"
+jq -e '.ingest.counts.ingested == 1 and .rename != null and .rename.counts.renamed == 1' "$tmp/run.json" >/dev/null
+test -f "$tmp/library/Movies/Movie Production (2024)/Movie Production (2024).mkv"
 ```
 
 ```accept

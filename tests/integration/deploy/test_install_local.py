@@ -359,3 +359,27 @@ def test_unattended_install_without_a_source_names_the_gap(
     )
     assert source_check["status"] == "warn"
     assert payload["next_steps"][0] == source_check["remedy"]
+
+
+def test_install_writes_the_requested_profile_with_the_adaptive_default(
+    layout: Layout, bundle: Path
+) -> None:
+    completed = install(layout, bundle, [*_standard(layout), "--profile", "books"])
+
+    payload = report(completed)
+    assert completed.returncode == 0, payload
+    text = layout.config.read_text(encoding="utf-8")
+    assert "profile = books" in text
+    assert "mode = auto" in text
+
+
+def test_install_refuses_an_unknown_profile_without_writing_config(
+    layout: Layout, bundle: Path
+) -> None:
+    completed = install(layout, bundle, [*_standard(layout), "--profile", "nope"])
+
+    payload = report(completed)
+    assert completed.returncode == 7, payload
+    assert payload["error"]["code"] == "config_invalid"
+    assert "one of" in payload["error"]["message"]
+    assert not layout.config.exists()

@@ -19,7 +19,7 @@ from trovium.adapters.qbittorrent import AdapterError
 from trovium.adapters.qbittorrent import QbittorrentClient as QbittorrentClient
 from trovium.config import ConfigError, load_config
 from trovium.library import compare_existing
-from trovium.placement import apply_placement, plan_placement
+from trovium.placement import apply_placement, effective_mode, plan_placement
 from trovium.profiles import available_profiles, get_profile
 from trovium.profiles.base import (
     CandidateGroup,
@@ -44,6 +44,7 @@ from trovium.record import (
 )
 from trovium.sources import (
     Candidate,
+    ClientState,
     CompletionState,
     client_candidates,
     disk_candidates,
@@ -211,7 +212,7 @@ def resolve_options(args: argparse.Namespace) -> ResolvedOptions:
     mode_value = _first(
         args.mode,
         config.ingest.mode.value if config is not None else None,
-        Mode.MOVE.value,
+        Mode.AUTO.value,
     )
     on_fail_value = _first(
         args.on_fail,
@@ -279,7 +280,7 @@ def process(
     dry_run: bool,
     *,
     profile: Profile,
-    guard: Callable[[Candidate, Classification], str | None] | None = None,
+    guard: Callable[[Candidate, Classification, Mode], str | None] | None = None,
     planned: Mapping[Path, Path] | None = None,
 ) -> ItemRecord:
     """Classify and (unless dry-run) place one candidate.
@@ -289,6 +290,13 @@ def process(
     than vanishing (SC-003); a candidate whose files are not visible on this
     host is a named error, not "no media" (SC-003, Edge Cases).
     """
+    if candidate.unresolved_reason is not None:
+        return ItemRecord(
+            name=candidate.name,
+            source=candidate.source,
+            disposition=Disposition.UNRESOLVABLE,
+            reason=candidate.unresolved_reason,
+        )
     if not candidate.files:
         root = candidate.root
         if root is not None and not root.exists():
@@ -333,11 +341,21 @@ def process(
             title=classification.title,
             details=dict(classification.details) or None,
         )
-    refusal = guard(candidate, classification) if guard is not None else None
 
     destination = profile.destination(classification, library_root)
+    mode = effective_mode(
+        declared.mode,
+        seeding=(
+            candidate.source is Source.CLIENT
+            and candidate.client_state is ClientState.SEEDING
+        ),
+        files=candidate.files,
+        destination=destination,
+    )
+    refusal = guard(candidate, classification, mode) if guard is not None else None
+
     existing = compare_existing(destination, candidate.files, planned=planned)
-    plan = plan_placement(declared.mode, candidate.files, destination, existing)
+    plan = plan_placement(mode, candidate.files, destination, existing)
     if refusal is not None:
         if plan.disposition is Disposition.INGESTED:
             return ItemRecord(
@@ -357,7 +375,7 @@ def process(
                 reason="identical content already in the library",
             )
     if not dry_run:
-        plan = apply_placement(declared.mode, candidate.files, plan)
+        plan = apply_placement(mode, candidate.files, plan)
 
     return ItemRecord(
         name=candidate.name,
@@ -410,8 +428,26 @@ def run_disk(
     return summary
 
 
+def _item_mode(
+    candidate: Candidate, declared: Declared, destination: str | None
+) -> Mode:
+    """The effective mode for a processed candidate (``auto`` resolved)."""
+    if destination is None:
+        return declared.mode
+    return effective_mode(
+        declared.mode,
+        seeding=(
+            candidate.source is Source.CLIENT
+            and candidate.client_state is ClientState.SEEDING
+        ),
+        files=candidate.files,
+        destination=Path(destination),
+    )
+
+
 def _planned_client_actions(
     declared: Declared,
+    mode: Mode,
     torrent_hash: str,
     destination: str | None,
     *,
@@ -422,14 +458,14 @@ def _planned_client_actions(
     pause_first = (
         include_policy
         and declared.post_ingest is PostIngest.PAUSE
-        and declared.mode is Mode.MOVE
+        and mode is Mode.MOVE
         and destination is not None
     )
     if pause_first:
         planned.append(
             ClientAction(op="pause", detail=f"planned: hashes={torrent_hash}")
         )
-    if declared.mode is Mode.MOVE and destination is not None:
+    if mode is Mode.MOVE and destination is not None:
         planned.append(
             ClientAction(
                 op="setLocation",
@@ -461,20 +497,12 @@ MULTI_FILE_MOVE_REASON = (
 
 
 def _client_move_guard(
-    declared: Declared,
-) -> Callable[[Candidate, Classification], str | None]:
+    candidate: Candidate, _classification: Classification, mode: Mode
+) -> str | None:
     """Refuse client move for folder torrents after scope/classification."""
-
-    def guard(candidate: Candidate, _classification: Classification) -> str | None:
-        if (
-            declared.mode is Mode.MOVE
-            and candidate.root is not None
-            and candidate.root.is_dir()
-        ):
-            return MULTI_FILE_MOVE_REASON
-        return None
-
-    return guard
+    if mode is Mode.MOVE and candidate.root is not None and candidate.root.is_dir():
+        return MULTI_FILE_MOVE_REASON
+    return None
 
 
 def run_client(
@@ -523,13 +551,14 @@ def run_client(
             declared,
             dry_run,
             profile=profile,
-            guard=_client_move_guard(declared),
+            guard=_client_move_guard,
             planned=planned if dry_run else None,
         )
         if dry_run:
             _record_planned_placement(planned, record)
         torrent_hash = candidate.client_hash
         assert torrent_hash is not None  # client candidates always carry hash
+        mode = _item_mode(candidate, declared, record.destination)
 
         removed_sources = record.disposition is Disposition.ALREADY_HANDLED and any(
             action.op is ActionKind.DELETE for action in record.actions
@@ -538,6 +567,7 @@ def run_client(
             record.client_actions.extend(
                 _planned_client_actions(
                     declared,
+                    mode,
                     torrent_hash,
                     record.destination,
                     include_policy=record.disposition is Disposition.INGESTED,
@@ -551,7 +581,7 @@ def run_client(
                 pause_first = (
                     record.disposition is Disposition.INGESTED
                     and declared.post_ingest is PostIngest.PAUSE
-                    and declared.mode is Mode.MOVE
+                    and mode is Mode.MOVE
                     and record.destination is not None
                 )
                 if pause_first:
@@ -559,7 +589,7 @@ def run_client(
                     record.client_actions.append(
                         ClientAction(op="pause", detail=f"hashes={torrent_hash}")
                     )
-                if declared.mode is Mode.MOVE and record.destination is not None:
+                if mode is Mode.MOVE and record.destination is not None:
                     client.set_location(torrent_hash, Path(record.destination))
                     record.client_actions.append(
                         ClientAction(

@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 
 from trovium.library import ExistingItem, Sameness
-from trovium.placement import apply_placement, plan_placement
+from trovium.placement import (
+    apply_placement,
+    effective_mode,
+    plan_placement,
+)
 from trovium.record import ActionKind, Disposition, Mode
 
 
@@ -70,7 +74,7 @@ def test_cross_filesystem_hardlink_behaves_as_copy(
     source.write_bytes(b"payload")
     destination = tmp_path / "lib" / "Movie"
 
-    monkeypatch.setattr("trovium.placement._same_filesystem", lambda *_: False)
+    monkeypatch.setattr("trovium.placement.same_filesystem", lambda *_: False)
     plan = plan_placement(Mode.HARDLINK, (source,), destination, _no_conflict())
     # the plan predicts the fallback, so dry-run and real run agree (SC-005)
     assert plan.actions[0].op is ActionKind.COPY
@@ -276,3 +280,69 @@ def test_unwritable_destination_is_named_error(tmp_path: Path) -> None:
         assert source.exists()
     finally:
         destination.chmod(0o755)
+
+
+def test_auto_moves_a_disk_entry(tmp_path: Path) -> None:
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+
+    assert (
+        effective_mode(
+            Mode.AUTO,
+            seeding=False,
+            files=(source,),
+            destination=tmp_path / "library",
+        )
+        is Mode.MOVE
+    )
+
+
+def test_auto_hardlinks_a_seeding_torrent_on_one_filesystem(tmp_path: Path) -> None:
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+
+    assert (
+        effective_mode(
+            Mode.AUTO,
+            seeding=True,
+            files=(source,),
+            destination=tmp_path / "library",
+        )
+        is Mode.HARDLINK
+    )
+
+
+def test_auto_copies_a_seeding_torrent_across_filesystems(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+    monkeypatch.setattr("trovium.placement.same_filesystem", lambda *_: False)
+
+    assert (
+        effective_mode(
+            Mode.AUTO,
+            seeding=True,
+            files=(source,),
+            destination=tmp_path / "library",
+        )
+        is Mode.COPY
+    )
+
+
+@pytest.mark.parametrize("mode", [Mode.MOVE, Mode.COPY, Mode.HARDLINK])
+def test_effective_mode_passes_explicit_values_through(
+    tmp_path: Path, mode: Mode
+) -> None:
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+
+    assert (
+        effective_mode(
+            mode,
+            seeding=True,
+            files=(source,),
+            destination=tmp_path / "library",
+        )
+        is mode
+    )

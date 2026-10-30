@@ -5,11 +5,10 @@ The step is record-driven and profile-aware. It reads the record produced by
 name per file, and renames the placed files. It never guesses a classification
 and never overwrites an existing target.
 
-Safety default: only ``mode = move`` records are renamed. A copy/hardlink
-record can still have its source present, so renaming its library copy breaks
-the ingest no-op rerun and, with hardlinks, seeding. Client items whose record
-says the torrent was relocated into the library are skipped for the same
-reason. ``--allow-unsafe`` is the explicit override for a user who has stopped
+Safety default: copy, hardlink, and auto records are renamed; only a client
+item whose record says the torrent was relocated into the library is skipped,
+because renaming the library file the client tracks breaks seeding.
+``--allow-unsafe`` is the explicit override for a user who has stopped
 seeding and removed the source.
 """
 
@@ -441,18 +440,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         fail(str(error))
         return EXIT_MISUSE
 
-    mode = str(payload["declared"]["mode"])
-    if mode != "move" and not args.allow_unsafe:
-        fail(
-            f"refusing to rename a {mode!r} ingest: renaming the library copy "
-            "can break seeding and the ingest no-op rerun; pass --allow-unsafe "
-            "after the source is gone"
-        )
-        return EXIT_MISUSE
     if args.allow_unsafe:
         sys.stderr.write(
-            "warning: --allow-unsafe permits renaming seeding or copy-mode "
-            "files; the source must be gone before the next ingest\n"
+            "warning: --allow-unsafe permits renaming client-relocated files; "
+            "the source must be gone before the next ingest\n"
         )
 
     on_fail = OnFail(args.on_fail) if args.on_fail else OnFail.CONTINUE

@@ -60,6 +60,7 @@ def test_help_lists_the_documented_surface(layout: Layout) -> None:
         "--library-root",
         "--source",
         "--client-url",
+        "--profile",
         "--config",
         "--force",
         "--json",

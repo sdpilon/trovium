@@ -49,7 +49,7 @@ class IngestSettings:
 
     profile: str = "video"
     category: str = "all"
-    mode: Mode = Mode.MOVE
+    mode: Mode = Mode.AUTO
     post_ingest: PostIngest = PostIngest.KEEP
     on_fail: OnFail = OnFail.CONTINUE
     json: JsonStyle = JsonStyle.PRETTY

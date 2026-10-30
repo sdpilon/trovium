@@ -69,3 +69,31 @@ def test_missing_explicit_config_is_misuse(
     assert code == cli.EXIT_MISUSE
     assert captured.out == ""
     assert "does not exist" in captured.err
+
+
+def test_auto_mode_is_accepted_from_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, _library, _source = _tree(tmp_path)
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("mode = copy", "mode = auto"),
+        encoding="utf-8",
+    )
+
+    code = cli.main(["--config", str(config), "--dry-run"])
+
+    cached = capsys.readouterr()
+    assert code == 0
+    assert json.loads(cached.out)["declared"]["mode"] == "auto"
+
+
+def test_auto_mode_is_accepted_from_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, _library, _source = _tree(tmp_path)
+
+    code = cli.main(["--config", str(config), "--mode", "auto", "--dry-run"])
+
+    cached = capsys.readouterr()
+    assert code == 0
+    assert json.loads(cached.out)["declared"]["mode"] == "auto"

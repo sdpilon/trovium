@@ -41,6 +41,28 @@ class ExistingItem:
     detail: str | None = None
 
 
+def _content_match(
+    source: Path, present: list[Path], consumed: set[Path]
+) -> Path | None:
+    """A destination file with the source's content, under any name."""
+    try:
+        size = source.stat().st_size
+    except OSError:
+        return None
+    for candidate in present:
+        if candidate in consumed:
+            continue
+        try:
+            if candidate.stat().st_size != size:
+                continue
+            if file_digest(candidate) == file_digest(source):
+                consumed.add(candidate)
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
 def compare_existing(
     destination: Path,
     files: tuple[Path, ...],
@@ -51,9 +73,14 @@ def compare_existing(
 
     Identity by (profile, kind, title, fields, file-name set) is the profile's
     job; here **every** candidate file is checked against the same name at the
-    destination: size equality first, BLAKE2b only when sizes match. A single
-    missing target means the item is new (``NONE``); a single present target
-    with different content means ``COLLISION`` regardless of file order.
+    destination: size equality first, BLAKE2b only when sizes match. A
+    same-name target with different content means ``COLLISION`` regardless of
+    file order.
+
+    A source without a same-name target is compared by content against the
+    destination's other files, so a library file renamed by ``trovium-rename``
+    still counts as already held. Only when no content match exists is the item
+    new (``NONE``).
 
     ``planned`` maps a target path to the source another item in the same
     dry-run would place there. It lets a later candidate see an earlier
@@ -62,12 +89,22 @@ def compare_existing(
     if not files:
         return ExistingItem(sameness=Sameness.NONE)
 
+    present: list[Path] | None = None
+    consumed: set[Path] = set()
     any_missing = False
     for source in files:
         target = destination / source.name
         planned_source = None if planned is None else planned.get(target)
         if not target.exists() and planned_source is None:
-            any_missing = True
+            if present is None:
+                try:
+                    present = sorted(
+                        path for path in destination.iterdir() if path.is_file()
+                    )
+                except OSError:
+                    present = []
+            if _content_match(source, present, consumed) is None:
+                any_missing = True
             continue
         existing = target if target.exists() else planned_source
         assert existing is not None

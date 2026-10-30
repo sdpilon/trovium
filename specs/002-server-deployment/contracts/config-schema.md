@@ -5,6 +5,11 @@
 > **Profile-aware addendum**: `specs/003-media-profiles-books/contracts/config-schema.md`
 > adds optional `[ingest] profile` (default `video`) and makes `[ingest]
 category` profile-dependent. Existing schema-1 files remain valid.
+>
+> **Adaptive-mode addendum**: `specs/007-ebooks-full-pipeline/contracts/config-cli.md`
+> adds `mode = auto`, the default for new configs. It resolves per candidate:
+> a seeding torrent hardlinks on one filesystem and copies across filesystems;
+> disk and non-seeding sources move. Existing schema-1 files remain valid.
 
 The configuration file is a single INI document read by `trovium-deploy` and
 `trovium-ingest`. It stores settings, never credential values.

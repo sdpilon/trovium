@@ -28,6 +28,7 @@ class Mode(StrEnum):
     MOVE = "move"
     COPY = "copy"
     HARDLINK = "hardlink"
+    AUTO = "auto"
 
 
 class PostIngest(StrEnum):

@@ -44,6 +44,7 @@ from trovium.deploy.state import (
     read_record,
     write_record,
 )
+from trovium.profiles import available_profiles, get_profile
 from trovium.record import JsonStyle
 
 LIBRARY_ROOT_ENV = "TROVIUM_LIBRARY_ROOT"
@@ -71,6 +72,7 @@ class InstallOptions:
     source: Path | None = None
     client_url: str | None = None
     config: Path | None = None
+    profile: str | None = None
     force: bool = False
     json_style: JsonStyle = JsonStyle.PRETTY
     uv_override: Path | None = None
@@ -196,6 +198,19 @@ def _first_warning_remedy(checks: list[Check]) -> str | None:
     )
 
 
+def _validated_profile(name: str | None) -> str:
+    """The profile written to a new config; unknown names are refused."""
+    profile = name or "video"
+    try:
+        get_profile(profile)
+    except KeyError as error:
+        allowed = ", ".join(available_profiles())
+        raise ConfigError(
+            f"ingest profile must be one of: {allowed} (got {profile!r})"
+        ) from error
+    return profile
+
+
 def _resolve_install_config(
     opts: InstallOptions,
 ) -> tuple[TroviumConfig, list[str], list[Action]]:
@@ -220,6 +235,7 @@ def _ignored_supplied_warnings(
         ("library root", opts.library_root, config.library_root),
         ("source path", opts.source, config.source.path),
         ("client URL", opts.client_url, config.source.client_url),
+        ("profile", opts.profile, config.ingest.profile),
     )
     for label, requested, current in supplied:
         if requested is not None and requested != current:
@@ -321,7 +337,7 @@ def _resolve_install_config_inner(
         source_mode=mode,
         source_path=source,
         client_url=client_url,
-        ingest=IngestSettings(),
+        ingest=IngestSettings(profile=_validated_profile(opts.profile)),
     )
     actions.append(
         Action(

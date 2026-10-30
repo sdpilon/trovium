@@ -31,7 +31,7 @@ Bootstrap options:
   -h, --help               Print this help
 
 Mode options: --non-interactive, --library-root PATH, --source PATH,
---client-url URL, --config PATH, --force, --json {compact,pretty}
+--client-url URL, --profile NAME, --config PATH, --force, --json {compact,pretty}
 EOF
 }
 
@@ -278,7 +278,7 @@ while [ $# -gt 0 ]; do
             MODE_ARGS+=("$1"); shift ;;
         --force)
             CONFIG_ARGS=1; MODE_ARGS+=("$1"); shift ;;
-        --library-root|--source|--client-url|--config)
+        --library-root|--source|--client-url|--profile|--config)
             CONFIG_ARGS=1
             if [ $# -lt 2 ]; then
                 die "misuse" "option $1 needs a value" "Check install.sh --help." 2

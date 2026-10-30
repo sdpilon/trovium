@@ -16,7 +16,7 @@ from typing import Any
 
 from trovium import cli, rename
 from trovium.adapters.qbittorrent import AdapterError
-from trovium.record import JsonStyle, Mode, fail
+from trovium.record import JsonStyle, fail
 
 EXIT_OK = cli.EXIT_OK
 EXIT_MISUSE = cli.EXIT_MISUSE
@@ -35,10 +35,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--allow-unsafe",
         action="store_true",
-        help=(
-            "pass --allow-unsafe to rename: permits copy/hardlink and "
-            "client-relocated items"
-        ),
+        help=("pass --allow-unsafe to rename: permits renaming client-relocated items"),
     )
     return parser
 
@@ -48,10 +45,6 @@ def _skip_reason(args: Namespace, resolved: cli.ResolvedOptions) -> str | None:
         return "skipped by --skip-rename"
     if args.dry_run:
         return "dry-run: files are not placed, so rename was not planned"
-    if resolved.mode is not Mode.MOVE and not args.allow_unsafe:
-        return (
-            f"mode is {resolved.mode.value!r}; rename requires move or --allow-unsafe"
-        )
     return None
 
 
