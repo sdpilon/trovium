@@ -27,6 +27,25 @@ Optional:
   every feature's) accept blocks, as information only. Features whose
   `spec.md` says `**Status**: Complete` are enforced on every run anyway.
   A name that is not a feature is refused (exit 1) before any gate runs.
+- `--walk`: run only the built-in walk (prettier, markdownlint,
+  shellcheck as the policy enables them), with no attestation. This is
+  the stable way for a custom command to run the built-in checks; never
+  call `lib/formatter-dispatch.sh` directly.
+
+The report lists the project's own gates (`hooks.verify-quality.gates`)
+after the built-in ones. A gate the policy keeps out of this boundary
+shows as `[skipped] <name> -- skipped by declaration at agent`; that is
+a policy decision, not a failure, and CI still runs it. Every gate
+command can read the running boundary from `GATES_BOUNDARY`.
+
+An accept block the policy's covering script (`spec.cover`) vouched for
+shows as `spec: <feature>: "<label>" -- covered: <reason>`, and the spec
+gate's summary names every covered block. Covering never happens at CI;
+report covered blocks as covered, not as passed.
+
+`GATES_TIMELINE=<file>` and `GATES_PROGRESS=<file>` make the run write a
+line per gate and accept block as it ends (timeline) or starts and ends
+(progress); set them only when the user asks for a timeline.
 
 ## Steps
 
@@ -54,3 +73,12 @@ to the message on stderr:
 (`boundary` is `unspecified` when no valid `--boundary` was given). A run that
 evaluated gates prints the result object with `gates[]` instead, which has
 no `result` key.
+
+One gate run holds the working tree at a time. When another run holds it,
+this command (agent boundary) skips: exit `0`, the message
+`gates: skipped: the gate run of pid N (<boundary>) is in progress`, and
+with `--json` the object `{"result":"skipped","boundary":"agent","reason":...}`.
+Report the skip and re-run once the other run (usually a commit's
+pre-commit hook) has finished; do not delete `.specify/gates/.lock`. At the
+git and CI boundaries a run waits for the lock instead, up to
+`GATES_LOCK_WAIT_S` seconds (default 600), and then refuses with exit `1`.

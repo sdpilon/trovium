@@ -49,7 +49,8 @@ nothing is checked.
      one **fails** with the validator's errors (every boundary refuses to
      run the gates until it is fixed), and the linters are not listed.
    - **Policy-enabled linters**: each linter the policy turns on must
-     resolve (`node_modules/.bin`, then PATH). A missing one is an
+     resolve (`node_modules/.bin`, then PATH; shellcheck from PATH first,
+     the npm wrapper in `node_modules` only without one). A missing one is an
      enforcement gap, so it fails. A deprecated field that no gate reads
      (`on_missing_runner`, `on_missing_tests`) gets a `[rec]` line to remove
      it; it does not fail.
@@ -102,7 +103,9 @@ nothing is checked.
      none of its candidate files (the no-op signature).
    - **Spec conformance**: features, accept blocks and Complete count; a
      parse error fails; all tasks checked without the Complete flip gets a
-     nudge.
+     nudge. With `spec.cover` declared, the cover script, its boundaries,
+     time limit and protection; a missing script is `[MISSING]` (fails),
+     one that is not executable a `[rec]` (every block then runs).
    - **Git boundary**: the hooks git actually runs. A gates stub is run with
      `GATES_PROBE=1` and must answer from the gates hook. A hook another
      tool owns is read, not run: the gates call-through must be in the file

@@ -9,5 +9,5 @@
     "MD013": false,
     "MD041": false
   },
-  "ignores": [".opencode/commands/**"]
+  "ignores": [".opencode/commands/**", ".specify/**", ".claude/**"]
 }

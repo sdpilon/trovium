@@ -349,6 +349,76 @@ else
             | select(. == "on_missing_runner" or . == "on_missing_tests")
             | "\($k).\(.)"' "$PROJECT_ROOT/.specify/gates/policy.json" 2>/dev/null || true)
     fi
+    # Project gates (feature 006, research R9): each with its severity, time
+    # limit and the boundaries it skips by declaration, so every skip is
+    # visible outside a run. CI never skips one (constitution, Principle III).
+    if declare -f gates_project_gate_names >/dev/null 2>&1; then
+        PG_LIST="$(gates_project_gate_names)"
+        if [[ -n "$PG_LIST" ]]; then
+            echo "Project gates:"
+            PG_DEFAULT_S="$(gates_policy_get "verify-quality" "gate_timeout_s")"
+            [[ -n "$PG_DEFAULT_S" ]] || PG_DEFAULT_S=600
+            while IFS= read -r pg; do
+                [[ -n "$pg" ]] || continue
+                pg_sev="$(gates_project_gate_get "$pg" severity)"
+                [[ -n "$pg_sev" ]] || pg_sev="error"
+                pg_s="$(gates_project_gate_get "$pg" timeout_s)"
+                [[ -n "$pg_s" ]] || pg_s="$PG_DEFAULT_S"
+                pg_skip="$(gates_project_gate_skip_at "$pg")"
+                pg_where="runs at every boundary"
+                [[ -n "$pg_skip" ]] \
+                    && pg_where="skipped by declaration at $(jq -r 'join(", ")' <<<"$pg_skip" 2>/dev/null)"
+                echo "${OK}gate $pg ($pg_sev, ${pg_s}s): $pg_where"
+            done <<<"$PG_LIST"
+        fi
+    fi
+    # lib/formatter-dispatch.sh is internal and may change between
+    # releases; verify.sh --walk is the stable way for a command to run the
+    # built-in walk (feature 006, research R9).
+    # shellcheck disable=SC2016  # literal backticks in the message
+    WALK_REC='use `bash .specify/gates/verify.sh --walk` (stable)'
+    # Looks one level down: the body of an `npm|pnpm|yarn run <script>`,
+    # and any project file the command (or that body) names. Files under
+    # .specify/gates/ are the runtime itself and are not read. Sets WALK_VIA
+    # to the file that calls the dispatch, empty when the command names it.
+    walk_calls_dispatch() { # <command> -> 0 when it reaches the dispatch
+        local text="$1" line word
+        local -a words
+        WALK_VIA=""
+        if [[ "$text" =~ ^[[:space:]]*(npm|pnpm|yarn)[[:space:]]+((-s|--silent)[[:space:]]+)?run(-script)?[[:space:]]+((-s|--silent)[[:space:]]+)?([^[:space:]]+) ]]; then
+            text+=$'\n'"$(jq -r --arg n "${BASH_REMATCH[7]}" '.scripts[$n] // empty' \
+                "$PROJECT_ROOT/package.json" 2>/dev/null)"
+        fi
+        [[ "$text" == *formatter-dispatch.sh* ]] && return 0
+        while IFS= read -r line; do
+            read -ra words <<<"$line"
+            for word in ${words[@]+"${words[@]}"}; do
+                word="${word//[\"\']/}"
+                word="${word#./}"
+                [[ -n "$word" && "$word" != /* && "$word" != *..* ]] || continue
+                [[ "$word" == .specify/gates/* ]] && continue
+                [[ -f "$PROJECT_ROOT/$word" ]] || continue
+                grep -qF formatter-dispatch.sh "$PROJECT_ROOT/$word" 2>/dev/null \
+                    && { WALK_VIA="$word"; return 0; }
+            done
+        done <<<"$text"
+        return 1
+    }
+    walk_rec() { # <subject> <command>
+        walk_calls_dispatch "$2" || return 0
+        if [[ -n "$WALK_VIA" ]]; then
+            echo "${REC}$1 calls lib/formatter-dispatch.sh (via $WALK_VIA): $WALK_REC"
+        else
+            echo "${REC}$1 calls lib/formatter-dispatch.sh: $WALK_REC"
+        fi
+    }
+    walk_rec custom_command "$(gates_policy_get "verify-quality" "custom_command")"
+    if declare -f gates_project_gate_names >/dev/null 2>&1; then
+        while IFS= read -r pg; do
+            [[ -n "$pg" ]] || continue
+            walk_rec "gate $pg" "$(gates_project_gate_get "$pg" command)"
+        done < <(gates_project_gate_names)
+    fi
 fi
 
 # Runtime projection vs installed extension (issue #33): after an extension
@@ -713,6 +783,31 @@ if declare -f gates_spec_features >/dev/null 2>&1 \
     done <<<"$(gates_spec_features "$PROJECT_ROOT")"
     rm -rf "$SPEC_TMP"
     echo "  $SPEC_FEATURES feature(s), $SPEC_BLOCKS accept block(s) parsed, $SPEC_COMPLETE complete"
+fi
+
+# The covering script (spec.cover, feature 007, FR-019): where it may cover
+# accept blocks (never at ci), its time limit, and that it is protected. A
+# declared script that is missing makes verify.sh refuse every run; one that
+# is not executable covers nothing (every block runs).
+if declare -f gates_cover_script >/dev/null 2>&1 && have jq; then
+    COVER_PATH="$(gates_cover_script)"
+    if [[ -n "$COVER_PATH" ]]; then
+        COVER_AT="$(gates_cover_at | jq -r 'join(", ")' 2>/dev/null)" || COVER_AT=""
+        COVER_PROT="protected"
+        grep -qxF -- "$(printf '%s' "$COVER_PATH" | sed -e 's#//*#/#g' -e 's#/\(\./\)*#/#g' -e 's#^\(\./\)*##')" \
+            <<<"$(cd "$PROJECT_ROOT" && gates_protected_list 2>/dev/null)" || COVER_PROT="NOT protected"
+        if ! COVER_WHY="$(gates_cover_script_check "$PROJECT_ROOT" "$COVER_PATH")"; then
+            echo "${BAD}cover script $COVER_PATH: $COVER_WHY, so verify.sh refuses every run — add the script or remove spec.cover"
+            MISSING=$((MISSING + 1))
+        elif [[ "$COVER_PROT" != "protected" ]]; then
+            echo "${BAD}cover script $COVER_PATH is not in the protected list — re-project the runtime"
+            MISSING=$((MISSING + 1))
+        else
+            echo "${OK}cover script $COVER_PATH at ${COVER_AT:-?} ($(gates_cover_timeout)s), $COVER_PROT"
+            [[ -x "$PROJECT_ROOT/$COVER_PATH" ]] \
+                || echo "${REC}cover script $COVER_PATH is not executable, so it covers nothing (every block runs) — chmod +x it"
+        fi
+    fi
 fi
 
 # Git boundary wiring (issues #20/#23): an INSTALLED hook that git will

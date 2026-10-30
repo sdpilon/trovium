@@ -8,6 +8,225 @@ never touches `.specify/gates/policy.json`. New policy keys take the
 defaults stated here until you set them. Releases before 0.3.3 are
 described in their [GitHub release notes](https://github.com/schwichtgit/spec-gates/releases).
 
+## 0.5.0 — 2026-10-27
+
+### Upgrading
+
+- Upgrade as for 0.4.2 (README "Upgrade"): one `project.sh` run, then
+  commit `.specify/gates/.projected.sha256` with the upgrade. The canary
+  suite now has 18 canaries (new: `project`, `covered`); `project.sh`
+  lists the new optional settings (`hooks.verify-quality.gates`,
+  `gate_timeout_s`, `test_severity`, `spec.cover`). A 0.4.x runtime
+  refuses a policy that sets any of them, so upgrade every branch and
+  pipeline that shares the policy before you use them.
+- The custom command now runs from the project root (#276). One that
+  relied on the directory `verify.sh` was started in must change
+  directory itself.
+- A gate command, or the custom command, that starts a full `verify.sh`
+  run of its own project, directly or through `git commit`, is now
+  refused and fails (#243). Call `verify.sh --walk` for the built-in
+  checks instead.
+- The parity gate fails when two sources pin a tool at different
+  versions, including `package-lock.json` against `.tool-versions` and
+  the mise files (#260). The npm `shellcheck` downloader wrapper is no
+  longer read as a shellcheck pin.
+- The CI templates call `install-shellcheck.sh --pin`, which a 0.4.x
+  runtime lacks: merge the new template steps into your pipeline only
+  together with the re-projected runtime. A pipeline that installs
+  shellcheck another way needs no change.
+- A custom command that bundles several checks may stay as it is. To
+  report each check as its own gate, move them to
+  `hooks.verify-quality.gates`, keep slow ones out of the agent boundary
+  with `skip_at`, and replace direct calls of
+  `lib/formatter-dispatch.sh` with `verify.sh --walk`; doctor names
+  such calls, one level down.
+- Constitution 1.1.0 rewrites Principle III: an earlier boundary may
+  skip what the policy declares, CI never. The shipped
+  `one-policy-many-boundaries` fragment carries the new text; a
+  constitution built from the old fragment keeps its text until you
+  update it.
+- Adopting the CI `pr` step on a repository with open branches: it
+  checks every commit in the PR, so a protected-file commit made before
+  the trailers existed fails until the PR description declares it
+  (`Protected-Change: <path>` and `Approved-By: <name>`).
+
+### Added
+
+- **Tool pins are read from mise** (#260). The parity gate,
+  `install-shellcheck.sh` and the CI templates take a pin from the
+  `[tools]` table of `mise.toml` (and the other project configs mise
+  documents), at the version `mise.lock` locks, between
+  `package-lock.json` and `.tool-versions`. Two sources that pin a tool
+  at different versions now fail the parity gate naming both, including
+  `package-lock.json` against `.tool-versions`; a mise file that cannot
+  be read fails it naming `file:line`. `package-lock.json` now pins only
+  the node linters: the npm `shellcheck` downloader wrapper used to be
+  read as a shellcheck pin, and no longer is. The CI templates ask
+  `install-shellcheck.sh --pin` for the pin, so they need the runtime of
+  the same release.
+
+- **Project gates** (#243, feature 006). A project declares its own
+  checks under `hooks.verify-quality.gates` (an object keyed by gate
+  name: `command`, `severity`, `timeout_s`, `skip_at`), next to whatever
+  the orchestrator runs. Each runs after the orchestrator's gates, from
+  the project root, under a time limit (`timeout_s`, else
+  `gate_timeout_s`, else 600 s; a timeout stops the gate's process
+  group), and is reported as its own gate in the text report, `--json`
+  and the attestation. A command that cannot start, or exceeds its
+  limit, fails. Gate names may not take a built-in name. Every gate
+  command sees `GATES_BOUNDARY`. An older runtime refuses the new keys.
+- **Declared skips, never at CI** (#243). `skip_at: ["agent"]` (or
+  `["agent", "git"]`) keeps a gate out of an earlier boundary; it starts
+  no process and is reported as `skipped by declaration at <boundary>`,
+  with `declared_skip` in the attestation. `ci` cannot be named
+  (constitution 1.1.0, Principle III). The parity gate fails when a
+  declared gate neither ran nor was skipped by a declaration naming the
+  boundary, so at CI every declared gate must have run. Doctor lists
+  each gate with its skips; the policy contract classifies removed
+  gates, added skips and lowered severities as weakening. The canary
+  suite has 17 canaries (new: `project`).
+- **`verify.sh --walk`** (#243). Runs only the built-in walk, whatever
+  the orchestrator, with no attestation: the stable way for a custom
+  command to include the built-in checks. Doctor recommends it where a
+  command calls `lib/formatter-dispatch.sh`, directly or one level down:
+  in the `npm`, `pnpm` or `yarn` script it runs, or in a project file it
+  or that script names, which the report shows as `(via <file>)`.
+- **`test_severity`** (#243). With the `task` orchestrator,
+  `"test_severity": "error"` makes a failing `task test` fail the run;
+  the default stays warning.
+
+- **Covered accept blocks** (#265, feature 007). `spec.cover` names a
+  project script and the boundaries (`agent`, `git`) where it may vouch
+  for accept blocks. The spec gate asks it per block
+  (`<script> <feature> <task-id> <block-file>`, 30 s default); exit 0
+  with one line covers the block, which is not run and is named with
+  that line in the report, the summary and the attestation
+  (`result: covered`, `declared_skip`). Anything else runs the block.
+  Never at CI: `at: ["ci"]` is refused, the parity gate fails CI if
+  anything was covered, and the new `covered` canary (the suite now has 18) proves it. The script is protected at every boundary like
+  `policy.json`; a declared script that is missing refuses the run.
+  Adding `spec.cover` is a weakening deviation under a policy contract.
+- **Per-block timings, a timeline and progress** (#266). The attestation
+  lists every evaluated accept block with its result and duration
+  (`blocks`, `blocks_covered`; blocks are `<feature> <task-id>#<n>`).
+  `GATES_TIMELINE=<file>` gets a tab-separated line per gate and block
+  as each ends, and `GATES_PROGRESS=<file>` a line as each starts and
+  ends; nested runs never write to the caller's files, and an
+  unwritable file changes no outcome. A commit from a terminal shows the
+  progress lines.
+
+### Changed
+
+- **A deferred agent run names what it defers** (#243). When the gate
+  lock makes an agent-boundary run skip, its message and `--json` now
+  list the gates it would have run (`deferred`) and those its policy
+  skips at the agent boundary (`declared_skip`).
+- **A gate cannot start the suite it belongs to** (#243). A full
+  `verify.sh` run started from a gate command on the same project
+  refuses with exit 1, and a `--walk` started inside a walk does the
+  same, so the calling gate fails instead of recursing. A gate that runs
+  `git commit` in its own project, and so triggers the pre-commit gate
+  run, is refused this way.
+
+### Fixed
+
+- **The custom command runs from the project root** (#276). It ran from
+  the directory verify.sh was started in, so a relative path such as
+  `scripts/check.sh` worked from the hooks and CI and failed from a
+  subdirectory. It now runs from the project root, as project gates do.
+  A custom command that relied on the caller's directory must change
+  directory itself.
+- **A failing gate names its failure once in the detail** (#279). The
+  `--json` detail of a failing file linter, or of a custom command that
+  runs `verify.sh --walk`, held the first failure twice: once as printed,
+  once from the marked line the text report's summary is read from. The
+  detail now leaves out a marked line whose text another line already
+  holds; a marked text found nowhere else stays.
+- **The attested shellcheck version is the binary's** (#274). With the
+  npm `shellcheck` downloader wrapper in `node_modules`, the gate ran it
+  and attested its `package.json` version, so parity reported drift
+  against a real pin that was not there. A shellcheck on PATH other than
+  the wrapper now runs first, and the version attested is the one the
+  binary that ran reports.
+- **Two spec-gate cleanup tests no longer race the machine's load**
+  (#281). They wait for the leftover child to exit instead of sleeping
+  a fixed time.
+
+## 0.4.2 — 2026-10-25
+
+### Upgrading
+
+- Upgrade as for 0.4.1 (README "Upgrade"): one `project.sh` run, then
+  commit `.specify/gates/.projected.sha256` with the upgrade. In a script
+  or an agent session, pipe `yes` into `specify extension add`, which
+  otherwise aborts at its source prompt (#248).
+- `project.sh` adds `.lock/` to `.specify/gates/.gitignore` (#263), so
+  `project.sh --check` reports pending work until you re-project.
+- Gate runs in one working tree no longer overlap (#263). A Stop-hook
+  (agent boundary) run that finds another run in progress skips with
+  exit 0, and `--json` prints a `skipped` result; a git or CI run waits
+  up to `GATES_LOCK_WAIT_S` seconds (default 600), then fails naming the
+  holder.
+- The one-line summary of a failing gate changed (#262): it names the
+  failing line, or a step's `##gates-fail##` line. Scripts that matched
+  the old summary text may need adjusting; the `--json` detail is
+  unchanged apart from dropping that marker.
+- GitHub pipelines: merge the template's `GATES_PR_BODY` line into your
+  pr step so Dependabot and Renovate PRs pass (#248). GitLab draft MRs
+  pass without a pipeline change (#261).
+
+### Fixed
+
+- **Dependabot and Renovate PRs pass the GitHub pr step** (#248). Their
+  descriptions quote upstream release notes, often with emoji, so every
+  such PR failed the message rules. The GitHub template and the
+  standalone `pr` snippet now hand `pr-check.sh` an empty description
+  when the PR author is `dependabot[bot]` or `renovate[bot]`; the title,
+  Protected-Change declarations in commits, and the secret scan still
+  run. Declarations in such a PR's description no longer count. An
+  existing pipeline keeps the old step until you merge the template's
+  `GATES_PR_BODY` line into it.
+- **validate-pr names an unset `--body-file` variable** (#248). A
+  `--body-file $B` whose variable the agent hook cannot see (a shell
+  variable set in an earlier command, not inherited by the hook) was
+  refused with only the unexpanded path. The refusal now names the
+  variable, says the hook resolves only the variables it inherits, and
+  says to pass the path literally. Still refused, as before.
+- **README Upgrade: unattended `add` and skill format** (#248).
+  `specify extension add --from <url>` asks to confirm the source and
+  aborts with exit 1 without a terminal; the Upgrade section says to
+  pipe `yes` into it in scripts and agent sessions. It also says to run
+  `specify integration upgrade --force` after the `add` when the skills
+  use the integration format, which some Spec Kit CLI versions revert.
+- **GitLab draft merge requests pass the pr step** (#261). GitLab marks
+  a draft in the MR title (`Draft: feat: x`), so pr-check failed every
+  draft on the conventional format, and on length near the limit. In
+  GitLab jobs `pr-check.sh` now drops one `Draft:`, `[Draft]`, `(Draft)`,
+  `WIP:` or `[WIP]` marker (any case, followed by a blank) at the start
+  of the title before the message rules run, and says so in the log. A
+  marker elsewhere, or a title that is only a marker, is checked as is.
+- **An accept-block timeout names the machine load** (#264). On a loaded
+  machine a timeout read like a hang. The detail now carries the
+  1-minute load average where it can be read (`/proc/loadavg`,
+  `sysctl -n vm.loadavg`, or `uptime`): `timeout after 90s at load 48.2`.
+  Without a load source it reads as before; `spec.timeout_s` remains the
+  knob.
+- **A failing gate's summary line names the failure** (#262). The text
+  report printed the first line of the step's last 2000 bytes of
+  output, a line wherever the cut fell. A step's last
+  `##gates-fail## <text>` line now wins; prettier, markdownlint and
+  shellcheck mark their first finding so, and a task or custom step
+  without one shows its last non-empty line. The marker never shows in
+  the report or the `--json` detail.
+- **Two gate runs in one working tree no longer fail each other** (#263).
+  `verify.sh` holds `.specify/gates/.lock` for the run. A Stop-hook run
+  that finds another run skips (exit 0); a git or CI run waits up to
+  `GATES_LOCK_WAIT_S` seconds (default 600), then refuses naming the
+  holder. A stale lock is taken over, nested runs share their parent's
+  lock, and `project.sh` adds `.lock/` to `.specify/gates/.gitignore`.
+  The accept-block read-only check also skips writes inside nested
+  repositories and worktrees, such as `.claude/worktrees/`.
+
 ## 0.4.1 — 2026-10-07
 
 ### Upgrading
