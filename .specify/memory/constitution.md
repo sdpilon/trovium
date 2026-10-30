@@ -43,9 +43,10 @@ gate that silently stops gating is caught by a red proof step.
 <!-- gates:enforce surface=policy ref=attestation.parity -->
 
 A single policy file is the source of enforcement truth, and the same entry
-point runs it at every boundary — local, commit, and CI. Parity is checked on
-each run, so the boundaries an actor could rewrite are backstopped by the ones
-it cannot, all provably running the same policy.
+point runs it at every boundary — local, commit, and CI. CI runs the whole
+policy; an earlier boundary skips only what the policy declares, and names
+each skip. Parity is checked on each run, so the boundaries an actor could
+rewrite are backstopped by the ones it cannot.
 
 ### VI. Fail Closed
 
@@ -253,4 +254,4 @@ and is approved by the project's maintainers. Every review verifies compliance
 with the principles above; the enforcement annotations bind each principle to
 the boundary that proves it.
 
-**Version**: 1.1.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-17
+**Version**: 1.1.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-30
